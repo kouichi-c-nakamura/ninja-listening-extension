@@ -14,8 +14,7 @@ listening/pronunciation practice.
 4. Click **Load unpacked** and select this folder.
 5. The extension is now active on any `youtube.com/watch` page.
 
-This same folder works in Firefox too, with minor tweaks (see "Porting to
-Firefox" below) if you want that later.
+This same folder now works in Firefox too — see "Install on Firefox" below.
 
 ## How to use
 
@@ -88,14 +87,32 @@ Two options, from least to most effort:
    "Add to Chrome" click, and it auto-updates. This is the way to go once
    you're happy with it.
 
-## Porting to Firefox
+## Install on Firefox
 
-Firefox supports the same WebExtensions APIs. The main changes needed:
-- Add a `browser_specific_settings` block to `manifest.json` with an
-  extension ID.
-- Firefox is stricter about Manifest V3 `action`/background details but
-  this extension has no background service worker, so it should load with
-  little to no change via `about:debugging` → "Load Temporary Add-on".
+This same folder is now Firefox-compatible (no code changes needed — just
+one extra key in `manifest.json`).
+
+**For your own testing:**
+1. Go to `about:debugging#/runtime/this-firefox`.
+2. Click **Load Temporary Add-on** and select any file inside this folder
+   (e.g. `manifest.json`).
+3. It works immediately, but resets when Firefox restarts — fine for
+   trying it out, not for daily use.
+
+**For a permanent install (yourself or sharing with others):**
+Firefox requires every add-on to be signed by Mozilla before it can be
+installed permanently, even for private/unlisted use. This is free and
+takes a few minutes:
+1. Create a free account at
+   [addons.mozilla.org/developers](https://addons.mozilla.org/developers/).
+2. Zip up this folder's *contents* (not the folder itself — `manifest.json`
+   should be at the root of the zip).
+3. Go to "Submit a New Add-on" → choose **"On your own"** (unlisted) rather
+   than the public store, so it's not publicly searchable.
+4. Upload the zip. Mozilla auto-signs it, usually within a few minutes.
+5. Download the signed `.xpi` file it gives you back and share that — it
+   installs permanently in Firefox with a simple drag-and-drop onto
+   `about:addons`, no store listing required.
 
 ## Known limitations / good next steps
 
