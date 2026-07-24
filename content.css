@@ -1,0 +1,77 @@
+#ninja-listening-panel {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 250px;
+  background: rgba(20, 20, 20, 0.92);
+  color: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  border-radius: 8px;
+  z-index: 999999;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.nlp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: bold;
+}
+
+.nlp-header button {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.nlp-body {
+  padding: 10px;
+}
+
+.nlp-collapsed .nlp-body {
+  display: none;
+}
+
+.nlp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.nlp-row button {
+  background: #3ea6ff;
+  border: none;
+  color: #000;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.nlp-row button:hover {
+  background: #65b8ff;
+}
+
+#nlp-stop {
+  background: #ff5555;
+  color: #fff;
+}
+
+#nlp-stop:hover {
+  background: #ff7777;
+}
+
+.nlp-status {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 4px;
+  min-height: 16px;
+}

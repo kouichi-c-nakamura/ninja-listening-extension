@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ninja Listening Trainer - Options</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; padding: 20px; max-width: 480px; }
+  h2 { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 12px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: left; }
+  input[type=number] { width: 70px; }
+  button { margin-right: 8px; padding: 6px 10px; cursor: pointer; }
+  .row-actions button { padding: 2px 6px; margin-right: 4px; }
+  #save-msg { margin-top: 8px; color: #2a7a2a; display: none; }
+</style>
+</head>
+<body>
+  <h2>Step sequence</h2>
+  <p>Define the speed / subtitle steps that run for each marked fragment. Steps run in order, top to bottom.</p>
+  <table id="steps-table">
+    <thead><tr><th>#</th><th>Speed</th><th>Subtitles</th><th></th></tr></thead>
+    <tbody id="steps-body"></tbody>
+  </table>
+  <button id="add-row">+ Add step</button>
+  <button id="save">Save</button>
+  <button id="reset">Reset to default</button>
+  <div id="save-msg">Saved.</div>
+  <script src="options.js"></script>
+</body>
+</html>
