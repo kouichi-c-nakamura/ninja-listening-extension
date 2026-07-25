@@ -11,6 +11,12 @@
   z-index: 999999;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   overflow: hidden;
+  transition: width 0.15s ease; /* Smooth expansion */
+}
+
+/* New Wider State */
+#ninja-listening-panel.nlp-detailed {
+  width: 300px;
 }
 
 .nlp-header {
@@ -20,6 +26,11 @@
   padding: 8px 10px;
   background: rgba(255, 255, 255, 0.08);
   font-weight: bold;
+}
+
+.nlp-header-btns {
+  display: flex;
+  gap: 6px;
 }
 
 .nlp-header button {
@@ -74,4 +85,65 @@
   opacity: 0.85;
   margin-top: 4px;
   min-height: 16px;
+}
+
+/* Detailed List Styling */
+.nlp-detail-only {
+  display: none;
+}
+
+#ninja-listening-panel.nlp-detailed .nlp-detail-only {
+  display: block;
+}
+
+.nlp-steps-label {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+  margin-top: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+#nlp-steps-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nlp-step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nlp-step-row:last-child {
+  border-bottom: none;
+}
+
+.nlp-step-row:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.nlp-step-row.nlp-step-active {
+  background: rgba(62, 166, 255, 0.35); /* Highlights active row */
+}
+
+.nlp-step-idx {
+  width: 18px;
+  opacity: 0.6;
+}
+
+.nlp-step-rate {
+  width: 35px;
+  font-weight: bold;
+}
+
+.nlp-step-cc {
+  opacity: 0.8;
 }

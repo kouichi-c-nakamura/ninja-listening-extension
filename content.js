@@ -35,11 +35,8 @@
   let stopRequested = false;
   let currentStepIndex = -1;
   let targetRate = 1.0;
+  let panelMode = 'mini'; // Tracks window width state
 
-  // YouTube's own player periodically re-asserts its internally stored
-  // playback rate onto the <video> element (notably right after a seek or
-  // play() call), which silently undoes video.playbackRate = x. Fight back
-  // by re-applying our target rate whenever the browser reports a change.
   function attachRateEnforcer(v) {
     v.addEventListener('ratechange', () => {
       if (running && Math.abs(v.playbackRate - targetRate) > 0.001) {
@@ -95,12 +92,6 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function waitUntil(predicate, intervalMs) {
-    while (!predicate() && !stopRequested) {
-      await sleep(intervalMs || 100);
-    }
-  }
-
   function formatTime(t) {
     if (t === null || t === undefined || isNaN(t)) return '--:--';
     const m = Math.floor(t / 60);
@@ -146,6 +137,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.steps) {
       steps = changes.steps.newValue || DEFAULT_STEPS;
+      renderStepsList(); // Live update UI if options change
     }
   });
 
@@ -159,12 +151,8 @@
     video.playbackRate = targetRate;
     try {
       await video.play();
-    } catch (e) {
-      // autoplay might be blocked until user interacts; ignore
-    }
-    // Re-assert right after play(), since play() itself can trigger YouTube
-    // to reset the rate. Then keep enforcing it on every poll tick as a
-    // belt-and-suspenders measure alongside the ratechange listener.
+    } catch (e) {}
+    
     video.playbackRate = targetRate;
     while (!stopRequested && video.currentTime < endTime - 0.05 && !video.ended) {
       if (Math.abs(video.playbackRate - targetRate) > 0.001) {
@@ -175,7 +163,8 @@
     video.pause();
   }
 
-  async function runSequence() {
+  // Accepts an index to jump straight to a specific row
+  async function runSequence(fromIndex) {
     if (running) return;
     if (!video || startTime === null || endTime === null || endTime <= startTime) {
       updateStatus('Mark a valid start and end point first.');
@@ -183,15 +172,21 @@
     }
     running = true;
     stopRequested = false;
-    for (let i = 0; i < steps.length; i++) {
+    
+    const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
+    
+    for (let i = startIdx; i < steps.length; i++) {
       if (stopRequested) break;
       currentStepIndex = i;
       updateStatus();
+      renderStepsList(); // Highlight current row
       await playStep(steps[i]);
     }
+    
     running = false;
     currentStepIndex = -1;
     updateStatus();
+    renderStepsList(); // Remove highlights
   }
 
   function stopSequence() {
@@ -200,6 +195,7 @@
     if (video) video.pause();
     currentStepIndex = -1;
     updateStatus();
+    renderStepsList();
   }
 
   // ---------- UI ----------
@@ -210,7 +206,10 @@
     panel.innerHTML =
       '<div class="nlp-header">' +
       '  <span>Ninja Listening Trainer</span>' +
-      '  <button id="nlp-toggle" title="Collapse">\u2013</button>' +
+      '  <span class="nlp-header-btns">' +
+      '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' + // Expand button
+      '    <button id="nlp-toggle" title="Collapse">\u2013</button>' +
+      '  </span>' +
       '</div>' +
       '<div class="nlp-body">' +
       '  <div class="nlp-row">' +
@@ -226,12 +225,25 @@
       '    <button id="nlp-stop">\u25A0 Stop</button>' +
       '  </div>' +
       '  <div class="nlp-status" id="nlp-status">Ready</div>' +
+      '  <div class="nlp-detail-only" id="nlp-steps-wrap">' +
+      '    <div class="nlp-steps-label">Steps (click to jump in)</div>' +
+      '    <div id="nlp-steps-list"></div>' +
+      '  </div>' +
       '</div>';
     document.body.appendChild(panel);
 
+    // View toggles
     panel.querySelector('#nlp-toggle').addEventListener('click', () => {
       panel.classList.toggle('nlp-collapsed');
     });
+    
+    panel.querySelector('#nlp-view-toggle').addEventListener('click', () => {
+      panelMode = panelMode === 'mini' ? 'detailed' : 'mini';
+      chrome.storage.local.set({ panelMode: panelMode });
+      applyPanelMode();
+    });
+
+    // Action buttons
     panel.querySelector('#nlp-mark-start').addEventListener('click', () => {
       if (!video) return;
       startTime = video.currentTime;
@@ -246,6 +258,46 @@
     });
     panel.querySelector('#nlp-run').addEventListener('click', () => runSequence());
     panel.querySelector('#nlp-stop').addEventListener('click', () => stopSequence());
+
+    // Restore last used view state
+    chrome.storage.local.get(['panelMode'], (res) => {
+      panelMode = res.panelMode === 'detailed' ? 'detailed' : 'mini';
+      applyPanelMode();
+    });
+  }
+
+  function applyPanelMode() {
+    if (!panel) return;
+    panel.classList.toggle('nlp-detailed', panelMode === 'detailed');
+    renderStepsList();
+  }
+
+  function renderStepsList() {
+    if (!panel || panelMode !== 'detailed') return;
+    const list = panel.querySelector('#nlp-steps-list');
+    if (!list) return;
+    
+    list.innerHTML = ''; // Clear existing
+    
+    steps.forEach((step, i) => {
+      const row = document.createElement('div');
+      // Highlight the active step if running
+      row.className = 'nlp-step-row' + (i === currentStepIndex ? ' nlp-step-active' : '');
+      
+      const rateLabel = (Math.round(step.rate * 100) / 100).toString() + 'x';
+      row.innerHTML =
+        '<span class="nlp-step-idx">' + (i + 1) + '</span>' +
+        '<span class="nlp-step-rate">' + rateLabel + '</span>' +
+        '<span class="nlp-step-cc">' + (step.subtitles ? 'CC on' : 'CC off') + '</span>';
+      
+      // Make row clickable to jump straight to this iteration
+      row.addEventListener('click', () => {
+        if (running) stopSequence(); // halt current playback
+        setTimeout(() => runSequence(i), 50); // delay start to let halt finish
+      });
+      
+      list.appendChild(row);
+    });
   }
 
   function updatePanelTimes() {
@@ -271,8 +323,6 @@
   }
 
   // ---------- YouTube SPA navigation ----------
-  // YouTube swaps videos without a full page reload, so re-sync marks
-  // whenever the URL / video id changes.
   document.addEventListener('yt-navigate-finish', async () => {
     stopSequence();
     video = getVideoElement() || (await waitForVideo());
@@ -288,6 +338,7 @@
     buildPanel();
     loadSteps(() => {
       loadMarksForVideo();
+      renderStepsList();
     });
   })();
 })();
