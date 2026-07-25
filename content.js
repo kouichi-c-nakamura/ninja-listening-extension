@@ -18,7 +18,12 @@
     { rate: 1.2, subtitles: false },
     { rate: 1.3, subtitles: false },
     { rate: 1.4, subtitles: false },
-    { rate: 1.5, subtitles: false }
+    { rate: 1.5, subtitles: false },
+    { rate: 1.6, subtitles: false },
+    { rate: 1.7, subtitles: false },
+    { rate: 1.8, subtitles: false },
+    { rate: 1.9, subtitles: false },
+    { rate: 2.0, subtitles: false }
   ];
 
   let video = null;
