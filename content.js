@@ -233,7 +233,7 @@
       '</div>';
     document.body.appendChild(panel);
 
-    // Open options page safely via background script
+    // Open options page safely via background script (Works on Chrome & Firefox)
     panel.querySelector('#nlp-settings').addEventListener('click', () => {
       chrome.runtime.sendMessage({ action: 'openOptionsPage' });
     });
