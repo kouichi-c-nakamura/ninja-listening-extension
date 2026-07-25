@@ -203,6 +203,7 @@
   function buildPanel() {
     panel = document.createElement('div');
     panel.id = 'ninja-listening-panel';
+    panel.classList.add('nlp-collapsed'); // <-- Add this line here    
     panel.innerHTML =
       '<div class="nlp-header">' +
       '  <span>Ninja Listening Trainer</span>' +
