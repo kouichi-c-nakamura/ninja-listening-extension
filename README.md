@@ -1,124 +1,114 @@
 # Ninja Listening Trainer for YouTube
 
-A small browser extension that lets you mark a fragment of any YouTube video
-and replay it automatically through a customizable sequence of playback
-speeds and subtitle on/off states — built for the "Ninja method" of
-listening/pronunciation practice.
+Mark a fragment of any YouTube video, replay it through a customizable
+speed/subtitle sequence, and — new in this version — expand to a wide view
+that auto-loads the video's transcript as clickable text. Click any word to
+jump straight to its OALD definition.
 
-## Install (unpacked, for yourself or to share with friends)
+## Install (unpacked)
 
-1. Unzip this folder somewhere permanent (don't delete it after installing —
-   Chrome loads the extension directly from these files).
-2. Open `chrome://extensions` (or `edge://extensions` in Edge).
-3. Turn on **Developer mode** (toggle, usually top-right).
+1. Unzip this folder somewhere permanent.
+2. Open `chrome://extensions`.
+3. Turn on **Developer mode**.
 4. Click **Load unpacked** and select this folder.
-5. The extension is now active on any `youtube.com/watch` page.
+5. Open (or refresh) a `youtube.com/watch` page.
 
-This same folder now works in Firefox too — see "Install on Firefox" below.
+**If you're upgrading from an earlier version:** this update adds a
+background service worker and a new `scripting` permission (needed to read
+YouTube's caption data reliably — see "How the transcript feature works"
+below). Chrome may show a permission-review prompt on reload; just approve
+it. If the extension appears greyed out after reloading, click into its
+details and re-enable it.
 
 ## How to use
 
-1. Open any YouTube video.
-2. A small "Ninja Listening Trainer" panel appears in the bottom-right
-   corner.
-3. Play the video normally to the point where you want your practice
-   fragment to start, click **Mark start**. Do the same at the point you
-   want it to end, click **Mark end**.
-4. Click **▶ Run sequence**. The video will automatically loop through the
-   fragment at each configured speed/subtitle step, pausing at the end of
-   the fragment each time before moving to the next step.
-5. Click **■ Stop** any time to interrupt the sequence.
-6. To do the next chunk of the video, just play forward, mark a new
-   start/end, and run again.
+**Mini view** (unchanged): mark a fragment's start/end while watching
+normally, then run it through the speed/subtitle sequence.
 
-Your marks are remembered per video (so you can come back later), and the
-step sequence itself is shared across all videos.
+**Wide view**: click the "⤢" button in the panel header. It widens and
+automatically:
+1. Asks the background service worker to read the video's available
+   caption tracks.
+2. Loads a default track (prefers manually-created English, falls back to
+   auto-generated, falls back to whatever's first).
+3. Shows the transcript as clickable text, synced to playback — the
+   current line highlights as the video plays.
 
-## Customizing the step sequence
+- **Click a word** → opens its definition on
+  [OALD](https://www.oxfordlearnersdictionaries.com/) in a new tab.
+- **Click anywhere else on a line** → jumps the video to that timestamp.
+- **Track dropdown** → switch between available caption tracks (e.g.
+  "English" vs "English (auto-generated)") if the video has more than one.
+- **"Run diagnostics" button** → re-runs the whole load process and prints
+  a pass/fail log — see below.
 
-Click the extension's icon in the toolbar → **Edit step sequence** (or right
-click the icon → Options). From there you can:
+## How the transcript feature works (and why it needed a rebuild)
 
-- Change the playback speed of any step
-- Toggle subtitles on/off per step
-- Reorder steps (↑ / ↓)
-- Add or remove steps
-- Reset to the default Ninja sequence
+A content script runs in an "isolated world": it shares the page's DOM but
+**not** the page's own JavaScript variables or the methods YouTube's player
+attaches to itself. That means straightforward attempts like reading
+`window.ytInitialPlayerResponse` or calling
+`document.querySelector('#movie_player').getPlayerResponse()` **directly
+from a content script** typically return `undefined`, even though that
+data is clearly sitting on the page. This is almost certainly why earlier
+attempts stalled — it looks like it should work, and silently doesn't.
 
-The default sequence is:
+The fix: a **background service worker** uses
+`chrome.scripting.executeScript({ world: 'MAIN', ... })` to run that lookup
+*inside the page's real JavaScript context*, where the data is visible, and
+passes the result back to the content script via messaging
+(`background.js`). This part works reliably — the diagnostics panel can
+confirm the player response and list available caption tracks.
 
-```
-1.0x  no subtitles
-1.0x  subtitles
-0.6x  subtitles   (x3)
-0.7x  subtitles
-0.8x  subtitles
-0.9x  subtitles
-1.0x  no subtitles
-1.1x  no subtitles
-1.2x  no subtitles
-1.3x  no subtitles
-1.4x  no subtitles
-1.5x  no subtitles
-```
+**Downloading the actual caption text over the network is now blocked.**
+YouTube's `timedtext` endpoint (the one that used to serve raw caption
+data) currently returns `HTTP 200` with a completely empty body for
+extension/script-originated requests — almost certainly a proof-of-origin
+token requirement introduced to stop exactly this kind of scraping. This
+extension does not attempt to forge or bypass that token.
 
-## How it works (short version)
+Instead, the **"Capture from playback" button reads captions the way a
+human would**: it plays your marked fragment once, with captions on, and
+records the caption text actually rendered on screen (from
+`.ytp-caption-segment` elements) along with its timing. This sidesteps the
+blocked endpoint entirely, works reliably, but does take real time — about
+the length of your marked fragment, played at 1x — and requires a fragment
+to already be marked (Mark start / Mark end) before you click it.
 
-- A content script runs directly on the YouTube page and grabs the real
-  `<video>` element — no iframe, no YouTube API quota.
-- Subtitles are toggled by clicking YouTube's own CC button
-  (`.ytp-subtitles-button`), which is the only reliable way to control
-  native captions (the YouTube IFrame API no longer exposes this).
-- Marks are stored with `chrome.storage.local` (per browser profile) keyed
-  by video ID; the step sequence is stored with `chrome.storage.sync` so it
-  follows you across signed-in Chrome profiles.
+## Debugging with the diagnostics panel
 
-## Sharing this with others
+Click **Run diagnostics** in the wide view any time. It logs each stage in
+order, in green (pass) or red (fail):
 
-Two options, from least to most effort:
+1. Background service worker reachable at all?
+2. Did the page return a player response object, and from which source
+   (`movie_player.getPlayerResponse()` vs `window.ytInitialPlayerResponse`)?
+3. Does that object contain `captions.playerCaptionsTracklistRenderer`
+   with at least one track? Lists every track found, with language and
+   whether it's auto-generated.
+4. Attempts to download the actual caption text over the network (both a
+   `fmt=json3` and a default-XML request, each tried from the content
+   script and, if that fails, from the background worker). As of this
+   writing, expect this to fail with an empty `HTTP 200` body — that's the
+   proof-of-origin block described above, not a bug to chase further.
 
-1. **Zip and send the folder** (what you have now) — others load it as an
-   "unpacked" extension via developer mode. Free, but a little friction
-   (a handful of clicks, and Chrome will occasionally nag about developer
-   mode extensions).
-2. **Publish to the Chrome Web Store** — costs a one-time $5 developer
-   registration fee. Once published (even as an "unlisted" link you only
-   share with people you choose), anyone can install it with a single
-   "Add to Chrome" click, and it auto-updates. This is the way to go once
-   you're happy with it.
+If steps 1–3 pass but step 4 fails, use **"Capture from playback"** instead
+— that's the working path.
 
-## Install on Firefox
+## Known limitations
 
-This same folder is now Firefox-compatible (no code changes needed — just
-one extra key in `manifest.json`).
+- This relies on YouTube's internal (undocumented) data shapes. If YouTube
+  changes them, a specific diagnostics step will start failing — the log
+  will show which one.
+- Auto-generated (ASR) captions have no real punctuation and occasionally
+  odd word boundaries, so a few word-clicks may grab a slightly mis-split
+  word.
+- OALD is hardcoded for now (per current scope). Swapping in a dictionary
+  picker later is a small change if wanted.
+- No keyboard shortcuts yet for mark start/end/run.
 
-**For your own testing:**
-1. Go to `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on** and select any file inside this folder
-   (e.g. `manifest.json`).
-3. It works immediately, but resets when Firefox restarts — fine for
-   trying it out, not for daily use.
+## Firefox
 
-**For a permanent install (yourself or sharing with others):**
-Firefox requires every add-on to be signed by Mozilla before it can be
-installed permanently, even for private/unlisted use. This is free and
-takes a few minutes:
-1. Create a free account at
-   [addons.mozilla.org/developers](https://addons.mozilla.org/developers/).
-2. Zip up this folder's *contents* (not the folder itself — `manifest.json`
-   should be at the root of the zip).
-3. Go to "Submit a New Add-on" → choose **"On your own"** (unlisted) rather
-   than the public store, so it's not publicly searchable.
-4. Upload the zip. Mozilla auto-signs it, usually within a few minutes.
-5. Download the signed `.xpi` file it gives you back and share that — it
-   installs permanently in Firefox with a simple drag-and-drop onto
-   `about:addons`, no store listing required.
-
-## Known limitations / good next steps
-
-- If YouTube changes the CSS class name of the CC button, caption toggling
-  will silently stop working until the selector is updated.
-- No keyboard shortcuts yet (e.g. hotkeys for mark start/end/run).
-- No visual progress bar for the current fragment loop (status text only).
-- No import/export of step sequences between browsers/profiles beyond
-  Chrome's built-in sync.
+Same package works via `about:debugging` → "Load Temporary Add-on" for
+testing (resets on restart); a permanent install needs Mozilla's free
+add-on signing (unlisted) via addons.mozilla.org/developers.
