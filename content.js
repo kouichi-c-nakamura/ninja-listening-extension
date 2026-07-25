@@ -28,8 +28,8 @@
 
   let video = null;
   let panel = null;
-  let startTime = null;
-  let endTime = null;
+  let startTime = 0;
+  let endTime = 0;
   let steps = DEFAULT_STEPS;
   let running = false;
   let stopRequested = false;
@@ -207,7 +207,8 @@
       '<div class="nlp-header">' +
       '  <span>Ninja Listening Trainer</span>' +
       '  <span class="nlp-header-btns">' +
-      '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' + // Expand button
+      '    <button id="nlp-settings" title="Settings">\u2699</button>' + // Added Settings Gear
+      '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' + 
       '    <button id="nlp-toggle" title="Collapse">\u2013</button>' +
       '  </span>' +
       '</div>' +
@@ -231,6 +232,11 @@
       '  </div>' +
       '</div>';
     document.body.appendChild(panel);
+
+    // Open options page safely via background script
+    panel.querySelector('#nlp-settings').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ action: 'openOptionsPage' });
+    });
 
     // View toggles
     panel.querySelector('#nlp-toggle').addEventListener('click', () => {
