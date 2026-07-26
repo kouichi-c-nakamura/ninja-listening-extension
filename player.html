@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ninja Listening Trainer - Local Audio</title>
+<link rel="stylesheet" href="player.css">
+</head>
+<body>
+  <div id="player-card">
+    <h1>Ninja Listening Trainer <span class="subtitle-tag">local audio</span></h1>
+
+    <div id="drop-zone">
+      <p><strong>Choose an audio file</strong> (mp3, m4a, wav, ogg, flac, aac…) or drag one here.</p>
+      <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.wav,.ogg,.oga,.flac,.aac,.weba">
+    </div>
+
+    <div id="file-info" class="hidden">
+      <div id="file-name"></div>
+      <audio id="audio" controls></audio>
+    </div>
+
+    <div id="controls" class="hidden">
+      <div class="row">
+        <button id="mark-start">Mark start</button>
+        <span id="start-label">0:00</span>
+        <button id="mark-end">Mark end</button>
+        <span id="end-label">0:00</span>
+      </div>
+      <div class="row">
+        <button id="run-btn">▶ Run sequence</button>
+        <button id="stop-btn" class="danger">■ Stop</button>
+      </div>
+      <div class="status" id="status">Ready</div>
+
+      <div class="section-label">Steps (click to jump in) — shared with the YouTube version, edit in Options</div>
+      <div id="steps-list"></div>
+    </div>
+  </div>
+  <script src="player.js"></script>
+</body>
+</html>

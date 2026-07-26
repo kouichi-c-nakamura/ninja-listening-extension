@@ -1,9 +1,14 @@
 // Ninja Listening Trainer - content script
-// Runs on youtube.com/watch pages. Injects a small overlay panel that lets
-// you mark a fragment (start/end) and replay it through a configurable
-// sequence of playback speeds and subtitle on/off states.
+// Runs on youtube.com/watch pages AND on local audio files opened directly
+// via a file:// URL (matched by extension in manifest.json). Injects a
+// small overlay panel that lets you mark a fragment (start/end) and replay
+// it through a configurable sequence of playback speeds and subtitle
+// on/off states. Subtitle toggling is a no-op on local files (there's no
+// CC button to find), so the same sequencer code works for both.
 
 (function () {
+  const isFileMode = location.protocol === 'file:';
+
   const DEFAULT_STEPS = [
     { rate: 1.0, subtitles: false },
     { rate: 1.0, subtitles: true },
@@ -48,6 +53,9 @@
   // ---------- helpers ----------
 
   function getVideoId() {
+    if (isFileMode) {
+      return location.href; // the file path itself is already a stable, unique key
+    }
     try {
       const url = new URL(location.href);
       return url.searchParams.get('v') || 'unknown';
@@ -57,15 +65,31 @@
   }
 
   function getVideoElement() {
+    if (isFileMode) {
+      // Browsers render a plain <audio> (or occasionally <video>) element
+      // for a raw local media file.
+      return document.querySelector('audio') || document.querySelector('video');
+    }
     return document.querySelector('video.html5-main-video') || document.querySelector('video');
   }
 
   function waitForVideo() {
     return new Promise((resolve) => {
+      let attempts = 0;
       const check = () => {
         const v = getVideoElement();
-        if (v) resolve(v);
-        else setTimeout(check, 400);
+        if (v) {
+          resolve(v);
+          return;
+        }
+        attempts++;
+        if (attempts > 30) {
+          // Give up after ~12s rather than polling forever on a page that
+          // will never have a media element.
+          resolve(null);
+          return;
+        }
+        setTimeout(check, 400);
       };
       check();
     });
@@ -206,7 +230,7 @@
     panel.classList.add('nlp-collapsed'); // <-- Add this line here    
     panel.innerHTML =
       '<div class="nlp-header">' +
-      '  <span>Ninja Listening Trainer</span>' +
+      '  <span>Ninja Listening Trainer' + (isFileMode ? ' <span class="nlp-mode-tag">local file</span>' : '') + '</span>' +
       '  <span class="nlp-header-btns">' +
       '    <button id="nlp-settings" title="Settings">\u2699</button>' + // Added Settings Gear
       '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' + 
@@ -295,7 +319,7 @@
       row.innerHTML =
         '<span class="nlp-step-idx">' + (i + 1) + '</span>' +
         '<span class="nlp-step-rate">' + rateLabel + '</span>' +
-        '<span class="nlp-step-cc">' + (step.subtitles ? 'CC on' : 'CC off') + '</span>';
+        (isFileMode ? '' : '<span class="nlp-step-cc">' + (step.subtitles ? 'CC on' : 'CC off') + '</span>');
       
       // Make row clickable to jump straight to this iteration
       row.addEventListener('click', () => {
@@ -333,6 +357,7 @@
   document.addEventListener('yt-navigate-finish', async () => {
     stopSequence();
     video = getVideoElement() || (await waitForVideo());
+    if (!video) return;
     attachRateEnforcer(video);
     loadMarksForVideo();
   });
@@ -341,6 +366,7 @@
 
   (async () => {
     video = await waitForVideo();
+    if (!video) return; // no audio/video element on this page; don't show the panel
     attachRateEnforcer(video);
     buildPanel();
     loadSteps(() => {

@@ -42,6 +42,17 @@
   line-height: 1;
 }
 
+.nlp-mode-tag {
+  font-size: 10px;
+  font-weight: normal;
+  opacity: 0.6;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .nlp-body {
   padding: 10px;
 }

@@ -114,6 +114,62 @@ takes a few minutes:
    installs permanently in Firefox with a simple drag-and-drop onto
    `about:addons`, no store listing required.
 
+
+## Local audio files (mp3, m4a, wav, ogg, flac, aac…)
+
+Two ways to do this now — pick whichever fits how you work, or use both.
+
+### Option A: file picker page (no setup required)
+
+Click the extension's toolbar icon → **Open local audio player**. This
+opens a dedicated page with a file picker — choose or drag in a file, and
+the same mark/run controls appear on that page. Works immediately, no
+extra permissions to grant.
+
+### Option B: open the file directly via `file://` (floating overlay, like YouTube)
+
+If you'd rather just type or navigate to a file path directly (e.g. you
+keep a fixed practice folder and want quick access), you can open the
+audio file itself as a browser tab — `file:///Users/you/practice/clip.mp3`
+— and the same floating panel from the YouTube version appears as an
+overlay on that page.
+
+**Required one-time setup (this is a hard browser restriction, not
+something any manifest setting can skip):**
+1. Go to `chrome://extensions`.
+2. Find "Ninja Listening Trainer for YouTube" → click **Details**.
+3. Turn on **"Allow access to file URLs"**.
+4. (Firefox: `about:addons` → the extension → Permissions → enable file
+   access; wording varies by version.)
+
+This toggle is scoped to *this specific extension only* — it isn't a
+blanket "read all files" grant to every extension, and it can be turned
+off again just as easily. It occasionally resets after certain updates or
+reinstalls, so if file-mode suddenly stops working, this is the first
+thing to check.
+
+To keep the content script from running on *every* local file you ever
+open, `manifest.json` scopes it to common audio extensions specifically
+(`file:///*.mp3`, `file:///*.m4a`, `file:///*.wav`, `file:///*.ogg`,
+`file:///*.oga`, `file:///*.flac`, `file:///*.aac`, `file:///*.weba`)
+rather than a blanket `file:///*`. One limitation: these patterns are
+case-sensitive, so a file named `Track.MP3` (uppercase extension) won't
+match — rename it, or use Option A instead.
+
+### Both options share the same settings
+
+- The step sequence (Options page) is shared across YouTube, the file
+  picker page, and `file://` mode — configure it once.
+- Marks are remembered per file: Option A keys by filename + file size;
+  Option B keys by the exact file:// path, since that's already a stable
+  identifier.
+- Neither has captions/CC — there's nothing to toggle for a plain audio
+  file, so the `subtitles` field on each step is simply ignored in both.
+- No playback-rate "enforcer" hack is needed for either — that trick
+  existed only to fight YouTube's own player periodically resetting the
+  rate. A plain `<audio>` element doesn't do that, so `audio.playbackRate
+  = x` just sticks.
+
 ## Known limitations / good next steps
 
 - If YouTube changes the CSS class name of the CC button, caption toggling
