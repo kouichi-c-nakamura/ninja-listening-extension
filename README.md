@@ -1,5 +1,7 @@
 # Ninja Listening Trainer for YouTube
 
+https://addons.mozilla.org/ja/developers/addon/753e0b768f424259bffb/
+
 A small browser extension that lets you mark a fragment of any YouTube video
 and replay it automatically through a customizable sequence of playback
 speeds and subtitle on/off states — built for the "Ninja method" of
