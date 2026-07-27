@@ -114,6 +114,31 @@ takes a few minutes:
    installs permanently in Firefox with a simple drag-and-drop onto
    `about:addons`, no store listing required.
 
+### ⚠️ Required first-run step after any real (non-temporary) Firefox install
+
+This tripped us up during testing, so it's worth calling out clearly: on a
+normal signed install (via the `.xpi`, not a temporary `about:debugging`
+install), Firefox treats **every optional permission this extension asks
+for as off by default** — including the one needed for the YouTube panel
+to work at all, not just the local-file one.
+
+**Right after installing, before trying anything:**
+1. Go to `about:addons`.
+2. Click "Ninja Listening Trainer for YouTube."
+3. Open the **Permissions and data** tab.
+4. Turn **both** toggles on:
+   - **Access your data for https://youtube.com** ⚠️ ⚠️ ⚠️  — without this, the YouTube overlay simply
+     never appears. The file-picker page will still work fine without it,
+     which can make this look like "only local files work" — that's this
+     permission being off, not a separate bug.
+   - **Access local files on your computer** — only needed if you also want the
+     direct `file://` overlay (see "Local audio files" below); not needed
+     for the file-picker page.
+
+This is a one-time step per install. Temporary add-ons loaded via
+`about:debugging` behaved more permissively during development, which is
+why this wasn't obvious until testing a real signed install.
+
 
 ## Local audio files (mp3, m4a, wav, ogg, flac, aac…)
 
@@ -265,6 +290,21 @@ Firefoxでは、プライベート用や限定公開であっても、恒久的�
 3. 「新しいアドオンの登録」に進み、公開ストアではなく **「自分で配信（On your own）」**（限定公開）を選択します。これにより一般検索には表示されなくなります。
 4. Zipファイルをアップロードします。Mozillaが自動的に署名を行い、通常は数分で完了します。
 5. 返却された署名済みの `.xpi` ファイルをダウンロードして共有します。ストアに登録しなくても、`about:addons` 画面にドラッグ＆ドロップするだけで、Firefoxに恒久的にインストールできます。
+
+### ⚠️ Firefoxに実際にインストールした後、最初に必ず行う設定
+
+これはテスト中に実際につまずいた点なので、はっきり書いておきます。`.xpi` による通常インストール（`about:debugging` の一時的インストールではなく）の場合、**このアドオンが要求する任意の権限はすべて初期状態でオフ**になっています。これはローカルファイル用の権限だけでなく、YouTube版そのものを動かすための権限も含まれます。
+
+**インストール直後、何かを試す前に:**
+
+1. `about:addons` を開きます。
+2. 「Ninja Listening Trainer for YouTube」をクリックします。
+3. **「権限とデータ」** タブを開きます。
+4. **両方の** トグルをオンにします：
+   - **「https://www.youtube.com の保存されたデータへのアクセス」** ⚠️ ⚠️ ⚠️ — これがオフのままだと、YouTube側のパネルは一切表示されません。ファイル選択ページの方は問題なく動くので、一見「ローカルファイルしか使えない」ように見えますが、実際には別の不具合ではなく、この権限がオフになっているだけです。
+   - **「ユーザーのコンピューター上のローカルファイルへのアクセス」** — 後述の「file://」を直接開くローカル音声機能を使う場合のみ必要です。ファイル選択ページ（Option A）を使うだけならこれは不要です。
+
+これはインストールごとに一度だけ行えばよい設定です。開発中に使っていた `about:debugging` の一時的インストールはこの点でもっと緩い挙動だったため、実際に署名済みインストールを試すまでこの点に気づきませんでした。
 
 ## ローカル音声ファイル (mp3, m4a, wav, ogg, flac, aac…)
 
