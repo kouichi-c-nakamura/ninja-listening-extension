@@ -37,7 +37,7 @@
   let endTime = 0;
   let steps = DEFAULT_STEPS;
   let running = false;
-  let stopRequested = false;
+  let runToken = 0; // incremented on every new run/stop; invalidates any in-flight run
   let currentStepIndex = -1;
   let targetRate = 1.0;
   let panelMode = 'mini'; // Tracks window width state
@@ -167,8 +167,10 @@
 
   // ---------- sequencer ----------
 
-  async function playStep(step) {
+  async function playStep(step, myToken) {
     if (!video || startTime === null || endTime === null) return;
+    if (myToken !== runToken) return; // superseded before we even started
+
     targetRate = step.rate;
     video.currentTime = startTime;
     setCaptions(step.subtitles);
@@ -176,45 +178,51 @@
     try {
       await video.play();
     } catch (e) {}
-    
+    if (myToken !== runToken) return; // superseded while awaiting play()
+
     video.playbackRate = targetRate;
-    while (!stopRequested && video.currentTime < endTime - 0.05 && !video.ended) {
+    while (myToken === runToken && video.currentTime < endTime - 0.05 && !video.ended) {
       if (Math.abs(video.playbackRate - targetRate) > 0.001) {
         video.playbackRate = targetRate;
       }
       await sleep(100);
     }
-    video.pause();
+    if (myToken === runToken) {
+      video.pause();
+    }
   }
 
-  // Accepts an index to jump straight to a specific row
+  // Accepts an index to jump straight to a specific row. Starting a new run
+  // always supersedes any run already in progress -- no need to stop first.
   async function runSequence(fromIndex) {
-    if (running) return;
     if (!video || startTime === null || endTime === null || endTime <= startTime) {
       updateStatus('Mark a valid start and end point first.');
       return;
     }
+    runToken++; // invalidates any previous run, including one still in flight
+    const myToken = runToken;
     running = true;
-    stopRequested = false;
-    
+
     const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
-    
+
     for (let i = startIdx; i < steps.length; i++) {
-      if (stopRequested) break;
+      if (myToken !== runToken) return; // a newer run took over; stop touching shared state
       currentStepIndex = i;
       updateStatus();
       renderStepsList(); // Highlight current row
-      await playStep(steps[i]);
+      await playStep(steps[i], myToken);
     }
-    
-    running = false;
-    currentStepIndex = -1;
-    updateStatus();
-    renderStepsList(); // Remove highlights
+
+    if (myToken === runToken) {
+      running = false;
+      currentStepIndex = -1;
+      updateStatus();
+      renderStepsList(); // Remove highlights
+    }
   }
 
   function stopSequence() {
-    stopRequested = true;
+    runToken++; // invalidates any in-flight run
     running = false;
     if (video) video.pause();
     currentStepIndex = -1;
@@ -321,10 +329,12 @@
         '<span class="nlp-step-rate">' + rateLabel + '</span>' +
         (isFileMode ? '' : '<span class="nlp-step-cc">' + (step.subtitles ? 'CC on' : 'CC off') + '</span>');
       
-      // Make row clickable to jump straight to this iteration
+      // Make row clickable to jump straight to this iteration.
+      // runSequence() bumps the run token itself, which immediately
+      // invalidates whatever was running before -- no need to stop first
+      // or guess at a delay.
       row.addEventListener('click', () => {
-        if (running) stopSequence(); // halt current playback
-        setTimeout(() => runSequence(i), 50); // delay start to let halt finish
+        runSequence(i);
       });
       
       list.appendChild(row);
