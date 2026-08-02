@@ -199,7 +199,7 @@
 
   async function playStep(step, myToken) {
     if (!video || startTime === null || endTime === null) return;
-    if (myToken !== runToken) return; // superseded before we even started
+    if (myToken !== runToken) return; // Superseded before starting
 
     targetRate = step.rate;
     video.currentTime = startTime;
@@ -208,10 +208,10 @@
     try {
       await video.play();
     } catch (e) {}
-    if (myToken !== runToken) return; // superseded while awaiting play()
+    if (myToken !== runToken) return;
 
     video.playbackRate = targetRate;
-    while (myToken === runToken && video.currentTime < endTime - 0.05 && !video.ended) {
+    while (myToken === runToken && !stopRequested && video.currentTime < endTime - 0.05 && !video.ended) {
       if (Math.abs(video.playbackRate - targetRate) > 0.001) {
         video.playbackRate = targetRate;
       }
@@ -225,43 +225,70 @@
   // Accepts an index to jump straight to a specific row. Starting a new run
   // always supersedes any run already in progress -- no need to stop first.
   // Replaces the old runSequence loop
-  async function runSequence() {
-    if (running) return;
-    if (!video || startTime === null || endTime === null || endTime <= startTime) return;
-    
-    running = true;
-    stopRequested = false;
-    sessionLog = []; // Reset log for new run
-    
-    for (let i = 0; i < steps.length; i++) {
-      if (stopRequested) break;
-      currentStepIndex = i;
-      updateStatus();
-      
-      // 1. Play the segment
-      await playStep(steps[i]);
-      if (stopRequested) break;
-
-      // 2. Pause and Prompt VAS
-      const vasScore = await promptVAS();
-      
-      // 3. Log the data point
-      sessionLog.push({
-        SubjectID: "SUBJ_001", // Can be made dynamic later
-        Timestamp: new Date().toISOString(),
-        VideoID: getVideoId(),
-        StartTime: startTime.toFixed(2),
-        EndTime: endTime.toFixed(2),
-        StepIdx: i + 1,
-        PlaybackRate: steps[i].rate,
-        Subtitles: steps[i].subtitles,
-        VAS_Clarity: vasScore
-      });
+  async function runSequence(fromIndex) {
+    if (!video || startTime === null || endTime === null || endTime <= startTime) {
+      updateStatus('Mark a valid start and end point first.');
+      return;
     }
     
-    running = false;
-    currentStepIndex = -1;
-    updateStatus('Sequence Complete.');
+    // 1. Unblock any active VAS prompt if running
+    if (waitingForVas && currentVasResolve) {
+      currentVasResolve(null);
+    }
+
+    // 2. Cancel any currently active step loop
+    runToken++; 
+    const currentToken = runToken;
+    stopRequested = false;
+    running = true;
+
+    const enableVas = panel.querySelector('#nlp-enable-vas')?.checked || false;
+    const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
+
+    // Reset log only if starting from the beginning
+    if (startIdx === 0) {
+      sessionLog = [];
+    }
+
+    for (let i = startIdx; i < steps.length; i++) {
+      if (stopRequested || currentToken !== runToken) break;
+      currentStepIndex = i;
+      updateStatus();
+      renderStepsList();
+
+      // Play current step
+      await playStep(steps[i], currentToken);
+      if (stopRequested || currentToken !== runToken) break;
+
+      // Optional VAS Rating Prompt
+      if (enableVas) {
+        const vasScore = await promptVAS();
+        if (stopRequested || currentToken !== runToken) break;
+
+        // Log rating
+        if (vasScore !== null) {
+          sessionLog.push({
+            SubjectID: "SUBJ_001",
+            Timestamp: new Date().toISOString(),
+            VideoID: getVideoId(),
+            StartTime: startTime.toFixed(2),
+            EndTime: endTime.toFixed(2),
+            StepIdx: i + 1,
+            PlaybackRate: steps[i].rate,
+            Subtitles: steps[i].subtitles,
+            VAS_Clarity: vasScore
+          });
+        }
+      }
+    }
+    
+    // Only clear running state if this token is still the active one
+    if (currentToken === runToken) {
+      running = false;
+      currentStepIndex = -1;
+      updateStatus(stopRequested ? 'Stopped' : 'Sequence Complete.');
+      renderStepsList();
+    }
   }
 
   // Opens the VAS UI and returns a Promise that resolves on Submit
@@ -271,11 +298,17 @@
       const vasContainer = panel.querySelector('#nlp-vas-container');
       const slider = panel.querySelector('#nlp-vas-slider');
       
-      vasContainer.classList.add('nlp-active');
-      slider.value = 50; // Reset to middle
+      if (vasContainer) {
+        vasContainer.classList.add('nlp-active');
+      }
+      if (slider) {
+        slider.value = 50;
+      }
       
       currentVasResolve = (score) => {
-        vasContainer.classList.remove('nlp-active');
+        if (vasContainer) {
+          vasContainer.classList.remove('nlp-active');
+        }
         waitingForVas = false;
         resolve(score);
       };
@@ -283,11 +316,17 @@
   }
 
   function stopSequence() {
-    runToken++; // invalidates any in-flight run
+    stopRequested = true;
+    runToken++; // Invalidates in-flight step
     running = false;
+    
+    if (waitingForVas && currentVasResolve) {
+      currentVasResolve(null);
+    }
+
     if (video) video.pause();
     currentStepIndex = -1;
-    updateStatus();
+    updateStatus('Stopped');
     renderStepsList();
   }
 
@@ -296,7 +335,7 @@
   function buildPanel() {
     panel = document.createElement('div');
     panel.id = 'ninja-listening-panel';
-    panel.classList.add('nlp-collapsed'); // <-- Add this line here    
+    panel.classList.add('nlp-collapsed');    
     panel.innerHTML =
       '<div class="nlp-header">' +
       '  <span>Ninja Listening Trainer</span>' +
@@ -307,6 +346,7 @@
       '  </span>' +
       '</div>' +
       '<div class="nlp-body">' +
+      
       '  <div class="nlp-controls-row">' +
       '    <select id="nlp-preset-select" class="nlp-preset-select">' +
       '      <option value="ninja">Ninja Protocol (0.6x Anchor)</option>' +
@@ -316,6 +356,14 @@
       '    <button id="nlp-load-btn" class="nlp-file-btn">Load</button>' +
       '    <button id="nlp-export-btn" class="nlp-file-btn">Export Data</button>' +
       '  </div>' +
+
+      // --- NEW: Optional VAS Checkbox Row ---
+      '  <div class="nlp-row" style="font-size: 11px; opacity: 0.9;">' +
+      '    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">' +
+      '      <input type="checkbox" id="nlp-enable-vas"> Collect VAS Ratings' +
+      '    </label>' +
+      '  </div>' +
+
       '  <div class="nlp-row">' +
       '    <button id="nlp-mark-start">Mark start</button>' +
       '    <span id="nlp-start-label">--:--</span>' +
@@ -333,6 +381,8 @@
       '    <div class="nlp-steps-label">Steps (click to jump in)</div>' +
       '    <div id="nlp-steps-list"></div>' +
       '  </div>' +
+      
+      // VAS Container
       '  <div id="nlp-vas-container">' +
       '    <div class="nlp-vas-question">At this speed, how clearly could you perceive the acoustic details (individual sounds, phonemes, and syllables) of the speech?</div>' +
       '    <div class="nlp-vas-labels"><span>0%: Blur/Noise</span><span>100%: Crystal Clear</span></div>' +
