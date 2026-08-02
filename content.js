@@ -6,6 +6,36 @@
 // on/off states. Subtitle toggling is a no-op on local files (there's no
 // CC button to find), so the same sequencer code works for both.
 
+// 3-Arm Experimental Presets
+  const PRESETS = {
+    ninja: [
+      { rate: 1.0, subtitles: false },
+      { rate: 1.0, subtitles: true },
+      { rate: 0.6, subtitles: true },
+      { rate: 0.7, subtitles: true },
+      { rate: 0.8, subtitles: true },
+      { rate: 1.0, subtitles: false },
+      { rate: 2.0, subtitles: false }
+    ],
+    compression: [
+      { rate: 1.0, subtitles: false },
+      { rate: 1.2, subtitles: false },
+      { rate: 1.5, subtitles: false },
+      { rate: 2.0, subtitles: false }
+    ],
+    static: [
+      { rate: 1.0, subtitles: false },
+      { rate: 1.0, subtitles: false },
+      { rate: 1.0, subtitles: false }
+    ]
+  };
+
+  let sessionLog = []; // Stores the trial data
+  let waitingForVas = false;
+  let currentVasResolve = null;
+
+
+
 (function () {
   const isFileMode = location.protocol === 'file:';
 
@@ -194,31 +224,62 @@
 
   // Accepts an index to jump straight to a specific row. Starting a new run
   // always supersedes any run already in progress -- no need to stop first.
-  async function runSequence(fromIndex) {
-    if (!video || startTime === null || endTime === null || endTime <= startTime) {
-      updateStatus('Mark a valid start and end point first.');
-      return;
-    }
-    runToken++; // invalidates any previous run, including one still in flight
-    const myToken = runToken;
+  // Replaces the old runSequence loop
+  async function runSequence() {
+    if (running) return;
+    if (!video || startTime === null || endTime === null || endTime <= startTime) return;
+    
     running = true;
-
-    const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
-
-    for (let i = startIdx; i < steps.length; i++) {
-      if (myToken !== runToken) return; // a newer run took over; stop touching shared state
+    stopRequested = false;
+    sessionLog = []; // Reset log for new run
+    
+    for (let i = 0; i < steps.length; i++) {
+      if (stopRequested) break;
       currentStepIndex = i;
       updateStatus();
-      renderStepsList(); // Highlight current row
-      await playStep(steps[i], myToken);
-    }
+      
+      // 1. Play the segment
+      await playStep(steps[i]);
+      if (stopRequested) break;
 
-    if (myToken === runToken) {
-      running = false;
-      currentStepIndex = -1;
-      updateStatus();
-      renderStepsList(); // Remove highlights
+      // 2. Pause and Prompt VAS
+      const vasScore = await promptVAS();
+      
+      // 3. Log the data point
+      sessionLog.push({
+        SubjectID: "SUBJ_001", // Can be made dynamic later
+        Timestamp: new Date().toISOString(),
+        VideoID: getVideoId(),
+        StartTime: startTime.toFixed(2),
+        EndTime: endTime.toFixed(2),
+        StepIdx: i + 1,
+        PlaybackRate: steps[i].rate,
+        Subtitles: steps[i].subtitles,
+        VAS_Clarity: vasScore
+      });
     }
+    
+    running = false;
+    currentStepIndex = -1;
+    updateStatus('Sequence Complete.');
+  }
+
+  // Opens the VAS UI and returns a Promise that resolves on Submit
+  function promptVAS() {
+    return new Promise((resolve) => {
+      waitingForVas = true;
+      const vasContainer = panel.querySelector('#nlp-vas-container');
+      const slider = panel.querySelector('#nlp-vas-slider');
+      
+      vasContainer.classList.add('nlp-active');
+      slider.value = 50; // Reset to middle
+      
+      currentVasResolve = (score) => {
+        vasContainer.classList.remove('nlp-active');
+        waitingForVas = false;
+        resolve(score);
+      };
+    });
   }
 
   function stopSequence() {
@@ -238,14 +299,23 @@
     panel.classList.add('nlp-collapsed'); // <-- Add this line here    
     panel.innerHTML =
       '<div class="nlp-header">' +
-      '  <span>Ninja Listening Trainer' + (isFileMode ? ' <span class="nlp-mode-tag">local file</span>' : '') + '</span>' +
+      '  <span>Ninja Listening Trainer</span>' +
       '  <span class="nlp-header-btns">' +
-      '    <button id="nlp-settings" title="Settings">\u2699</button>' + // Added Settings Gear
-      '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' + 
+      '    <button id="nlp-settings" title="Settings">\u2699</button>' +
+      '    <button id="nlp-view-toggle" title="Toggle detailed view">\u2922</button>' +
       '    <button id="nlp-toggle" title="Collapse">\u2013</button>' +
       '  </span>' +
       '</div>' +
       '<div class="nlp-body">' +
+      '  <div class="nlp-controls-row">' +
+      '    <select id="nlp-preset-select" class="nlp-preset-select">' +
+      '      <option value="ninja">Ninja Protocol (0.6x Anchor)</option>' +
+      '      <option value="compression">Pure Compression</option>' +
+      '      <option value="static">Static Control (1.0x)</option>' +
+      '    </select>' +
+      '    <button id="nlp-load-btn" class="nlp-file-btn">Load</button>' +
+      '    <button id="nlp-export-btn" class="nlp-file-btn">Export Data</button>' +
+      '  </div>' +
       '  <div class="nlp-row">' +
       '    <button id="nlp-mark-start">Mark start</button>' +
       '    <span id="nlp-start-label">--:--</span>' +
@@ -263,8 +333,25 @@
       '    <div class="nlp-steps-label">Steps (click to jump in)</div>' +
       '    <div id="nlp-steps-list"></div>' +
       '  </div>' +
+      '  <div id="nlp-vas-container">' +
+      '    <div class="nlp-vas-question">At this speed, how clearly could you perceive the acoustic details (individual sounds, phonemes, and syllables) of the speech?</div>' +
+      '    <div class="nlp-vas-labels"><span>0%: Blur/Noise</span><span>100%: Crystal Clear</span></div>' +
+      '    <input type="range" id="nlp-vas-slider" min="0" max="100" step="5" value="50">' +
+      '    <div class="nlp-vas-actions">' +
+      '      <button id="nlp-vas-replay" class="nlp-file-btn">\uD83D\uDD04 Replay</button>' +
+      '      <button id="nlp-vas-submit" class="nlp-row button">Submit \u2794</button>' +
+      '    </div>' +
+      '  </div>' +
       '</div>';
+      
     document.body.appendChild(panel);
+
+    // Hidden file input for loading configs
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.json';
+      fileInput.style.display = 'none';
+      document.body.appendChild(fileInput);
 
     // Open options page safely via background script (Works on Chrome & Firefox)
     panel.querySelector('#nlp-settings').addEventListener('click', () => {
@@ -302,6 +389,69 @@
     chrome.storage.local.get(['panelMode'], (res) => {
       panelMode = res.panelMode === 'detailed' ? 'detailed' : 'mini';
       applyPanelMode();
+    });
+
+    // Preset Selection
+    panel.querySelector('#nlp-preset-select').addEventListener('change', (e) => {
+      steps = PRESETS[e.target.value];
+    });
+
+    // VAS Replay Button
+    panel.querySelector('#nlp-vas-replay').addEventListener('click', () => {
+      playStep(steps[currentStepIndex]); // Replays without advancing the loop
+    });
+
+    // VAS Submit Button
+    panel.querySelector('#nlp-vas-submit').addEventListener('click', () => {
+      if (waitingForVas && currentVasResolve) {
+        const score = panel.querySelector('#nlp-vas-slider').value;
+        currentVasResolve(parseInt(score, 10));
+      }
+    });
+
+    // Export Data (CSV)
+    panel.querySelector('#nlp-export-btn').addEventListener('click', () => {
+      if (sessionLog.length === 0) {
+        alert("No data to export yet.");
+        return;
+      }
+      
+      const headers = "SubjectID,Timestamp,VideoID,StartTime,EndTime,StepIdx,PlaybackRate,Subtitles,VAS_Clarity\n";
+      const csv = sessionLog.map(row => 
+        `${row.SubjectID},${row.Timestamp},${row.VideoID},${row.StartTime},${row.EndTime},${row.StepIdx},${row.PlaybackRate},${row.Subtitles},${row.VAS_Clarity}`
+      ).join("\n");
+      
+      const blob = new Blob([headers + csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ninja_research_log_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Load Config (JSON)
+    panel.querySelector('#nlp-load-btn').addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const config = JSON.parse(ev.target.result);
+          if (config.stepsArray) steps = config.stepsArray;
+          if (config.startTime) startTime = config.startTime;
+          if (config.endTime) endTime = config.endTime;
+          updatePanelTimes();
+          alert("Config loaded successfully.");
+        } catch (err) {
+          alert("Invalid JSON config.");
+        }
+      };
+      reader.readAsText(file);
     });
   }
 
@@ -372,16 +522,25 @@
     loadMarksForVideo();
   });
 
+  
   // ---------- init ----------
-
+  
   (async () => {
-    video = await waitForVideo();
-    if (!video) return; // no audio/video element on this page; don't show the panel
-    attachRateEnforcer(video);
+    // Always build the UI panel first so it's ready
     buildPanel();
-    loadSteps(() => {
+
+    // Now wait for the media element
+    video = await waitForVideo();
+    
+    if (video) {
+      attachRateEnforcer(video);
       loadMarksForVideo();
+    } else {
+      updateStatus("No video/audio element detected on this page.");
+    }
+
+    loadSteps(() => {
       renderStepsList();
     });
-  })();
+})();
 })();

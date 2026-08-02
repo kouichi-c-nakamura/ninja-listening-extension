@@ -158,3 +158,74 @@
 .nlp-step-cc {
   opacity: 0.8;
 }
+
+
+/* Preset and File Controls */
+.nlp-controls-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.nlp-preset-select {
+  flex: 1;
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 11px;
+}
+
+.nlp-file-btn {
+  background: #555;
+  border: none;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.nlp-file-btn:hover { background: #777; }
+
+/* VAS Prompt Overlay */
+#nlp-vas-container {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin-top: 10px;
+  background: rgba(40, 40, 40, 0.95);
+  border: 1px solid #3ea6ff;
+  border-radius: 6px;
+}
+
+#nlp-vas-container.nlp-active {
+  display: flex;
+}
+
+.nlp-vas-question {
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.nlp-vas-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #aaa;
+}
+
+#nlp-vas-slider {
+  width: 100%;
+  cursor: pointer;
+}
+
+.nlp-vas-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
