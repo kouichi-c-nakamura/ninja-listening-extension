@@ -33,7 +33,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "ninja-listening-trainer@kouichi.example",
+      "id": "ninja-listening-trainer-public@kouichi.example",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["none"]
