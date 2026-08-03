@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-Build a clean, flat zip of this extension folder for AMO / Chrome Web Store
-submission: manifest.json sits at the root of the zip (no wrapping folder),
-and no macOS metadata (.DS_Store, __MACOSX, ._*) is included.
+Build a clean, flat zip of the extension source (in the `extension/`
+subfolder) for AMO / Chrome Web Store submission: manifest.json sits at the
+root of the zip (no wrapping folder), and no macOS metadata (.DS_Store,
+__MACOSX, ._*) is included.
 
-Usage (run from inside the extension folder, or point it elsewhere):
+Lives at the repo root, alongside the `extension/` folder. The output zip
+is also written to the repo root.
+
+Usage:
     python3 make_zip.py
     python3 make_zip.py my-custom-name.zip
 """
@@ -12,7 +16,15 @@ import sys
 import zipfile
 from pathlib import Path
 
-SOURCE_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+# Name of the subfolder (relative to this script) that contains manifest.json
+# and the rest of the extension source. Change this if you rename the folder.
+EXTENSION_SUBDIR = "extension"
+
+SOURCE_DIR = SCRIPT_DIR / EXTENSION_SUBDIR
+OUTPUT_DIR = SCRIPT_DIR  # zip is written next to this script, at the repo root
+
 DEFAULT_NAME = "ninja-listening-extension.zip"
 
 # Folders to skip entirely. Remove "icons" once icons are finalized and
@@ -20,11 +32,7 @@ DEFAULT_NAME = "ninja-listening-extension.zip"
 EXCLUDE_DIRS = {"icons", "__pycache__", ".git"}
 
 
-def should_skip(rel_path: Path, output_name: str) -> bool:
-    if rel_path.name == output_name:
-        return True
-    if rel_path.name == Path(__file__).name:
-        return True
+def should_skip(rel_path: Path) -> bool:
     if rel_path.name.startswith("."):
         return True
     if any(part in EXCLUDE_DIRS or part.startswith(".") for part in rel_path.parts[:-1]):
@@ -33,8 +41,13 @@ def should_skip(rel_path: Path, output_name: str) -> bool:
 
 
 def main():
+    if not SOURCE_DIR.is_dir():
+        print(f"ERROR: expected extension source at {SOURCE_DIR}, but it doesn't exist.")
+        print(f"Check EXTENSION_SUBDIR at the top of this script (currently: '{EXTENSION_SUBDIR}').")
+        sys.exit(1)
+
     output_name = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_NAME
-    output_path = SOURCE_DIR / output_name
+    output_path = OUTPUT_DIR / output_name
 
     if output_path.exists():
         output_path.unlink()
@@ -45,7 +58,7 @@ def main():
             if path.is_dir():
                 continue
             rel = path.relative_to(SOURCE_DIR)
-            if should_skip(rel, output_name):
+            if should_skip(rel):
                 continue
             zf.write(path, rel)
             print("added:", rel)
