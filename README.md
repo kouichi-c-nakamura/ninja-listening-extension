@@ -344,3 +344,22 @@ Firefoxでは、プライベート用や限定公開であっても、恒久的�
 * キーボードショートカットはまだありません（例: 開始/終了のマークや実行などのホットキー）。
 * 現在ループしている区間の視覚的なプログレスバーはありません（ステータステキストのみです）。
 * Chrome内蔵の同期機能を除き、ブラウザやプロファイル間でのステップシーケンスのインポート/エクスポート機能はありません。
+
+
+
+
+
+# Creating zip file for upload
+
+
+
+
+
+```bash
+cd ~/path/to/repo/extension
+zip -r -X ../ninja-listening-extension.zip . -x ".*" -x "icons/*"
+```
+
+
+
+or  use `make_zip.py`
