@@ -225,6 +225,7 @@
   // Accepts an index to jump straight to a specific row. Starting a new run
   // always supersedes any run already in progress -- no need to stop first.
   // Replaces the old runSequence loop
+  // Accepts an index to jump straight to a specific row.
   async function runSequence(fromIndex) {
     if (!video || startTime === null || endTime === null || endTime <= startTime) {
       updateStatus('Mark a valid start and end point first.');
@@ -242,7 +243,6 @@
     stopRequested = false;
     running = true;
 
-    const enableVas = panel.querySelector('#nlp-enable-vas')?.checked || false;
     const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
 
     // Reset log only if starting from the beginning
@@ -260,12 +260,15 @@
       await playStep(steps[i], currentToken);
       if (stopRequested || currentToken !== runToken) break;
 
+      // ★ リアルタイム評価: 毎ステップごとにチェックボックスの最新状態を確認
+      const isVasEnabled = panel.querySelector('#nlp-enable-vas')?.checked || false;
+
       // Optional VAS Rating Prompt
-      if (enableVas) {
+      if (isVasEnabled) {
         const vasScore = await promptVAS();
         if (stopRequested || currentToken !== runToken) break;
 
-        // Log rating
+        // Log rating (Nullでない場合のみ記録)
         if (vasScore !== null) {
           sessionLog.push({
             SubjectID: "SUBJ_001",
@@ -307,7 +310,7 @@
       
       currentVasResolve = (score) => {
         if (vasContainer) {
-          vasContainer.classList.remove('nlp-active');
+          vasContainer.classList.remove('nlp-active'); // 必ず非表示にする
         }
         waitingForVas = false;
         resolve(score);
@@ -502,6 +505,14 @@
         }
       };
       reader.readAsText(file);
+    });
+
+    // buildPanel() 内のイベントリスナー追加エリアへ挿入
+    panel.querySelector('#nlp-enable-vas').addEventListener('change', (e) => {
+      // 走行中にOFFに切り替えられたら、現在開いているVASプロンプトをスキップして次へ進める
+      if (!e.target.checked && waitingForVas && currentVasResolve) {
+        currentVasResolve(null);
+      }
     });
   }
 
