@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ninja Listening Trainer for YouTube",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Mark a YouTube fragment and replay it through a customizable speed/subtitle sequence for listening and pronunciation practice.",
   "permissions": ["storage"],
   "background": {
