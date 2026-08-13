@@ -1,7 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Ninja Listening Trainer for YouTube",
-  "version": "0.2.1",
+  "version": "0.2.2",
+  "icons": {
+    "16": "pink shuriken 128.png",
+    "48": "pink shuriken 128.png",
+    "128": "pink shuriken 128.png"
+  },
   "description": "Mark a YouTube fragment and replay it through a customizable speed/subtitle sequence for listening and pronunciation practice.",
   "permissions": ["storage"],
   "background": {
@@ -29,7 +34,12 @@
   "options_page": "options.html",
   "action": {
     "default_title": "Ninja Listening Trainer",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "pink shuriken 128.png",
+      "48": "pink shuriken 128.png",
+      "128": "pink shuriken 128.png"
+    }
   },
   "browser_specific_settings": {
     "gecko": {
