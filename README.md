@@ -276,6 +276,8 @@ YouTube動画の任意の区間をマークし、カスタマイズ可能な再�
 
 ## Firefoxでのインストール
 
+https://addons.mozilla.org/ja/firefox/addon/ninja-listening-trainer/
+
 この同じフォルダがFirefoxにも対応しました（コードの変更は不要で、`manifest.json` にキーを1つ追加しただけです）。
 
 **自分でのテスト用:**
