@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ninja Listening Trainer for YouTube",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "icons": {
     "16": "pink shuriken 128.png",
     "48": "pink shuriken 128.png",
@@ -16,7 +16,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.youtube.com/watch*",
+        "*://*.youtube.com/*",
         "file:///*.mp3",
         "file:///*.m4a",
         "file:///*.wav",
@@ -49,5 +49,11 @@
         "required": ["none"]
       }
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["pink shuriken 128.png"],
+      "matches": ["*://*.youtube.com/*", "<all_urls>"]
+    }
+  ]
 }

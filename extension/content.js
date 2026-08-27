@@ -7,34 +7,32 @@
 // CC button to find), so the same sequencer code works for both.
 
 // 3-Arm Experimental Presets
-  const PRESETS = {
-    ninja: [
-      { rate: 1.0, subtitles: false },
-      { rate: 1.0, subtitles: true },
-      { rate: 0.6, subtitles: true },
-      { rate: 0.7, subtitles: true },
-      { rate: 0.8, subtitles: true },
-      { rate: 1.0, subtitles: false },
-      { rate: 2.0, subtitles: false }
-    ],
-    compression: [
-      { rate: 1.0, subtitles: false },
-      { rate: 1.2, subtitles: false },
-      { rate: 1.5, subtitles: false },
-      { rate: 2.0, subtitles: false }
-    ],
-    static: [
-      { rate: 1.0, subtitles: false },
-      { rate: 1.0, subtitles: false },
-      { rate: 1.0, subtitles: false }
-    ]
-  };
+const PRESETS = {
+  ninja: [
+    { rate: 1.0, subtitles: false },
+    { rate: 1.0, subtitles: true },
+    { rate: 0.6, subtitles: true },
+    { rate: 0.7, subtitles: true },
+    { rate: 0.8, subtitles: true },
+    { rate: 1.0, subtitles: false },
+    { rate: 2.0, subtitles: false }
+  ],
+  compression: [
+    { rate: 1.0, subtitles: false },
+    { rate: 1.2, subtitles: false },
+    { rate: 1.5, subtitles: false },
+    { rate: 2.0, subtitles: false }
+  ],
+  static: [
+    { rate: 1.0, subtitles: false },
+    { rate: 1.0, subtitles: false },
+    { rate: 1.0, subtitles: false }
+  ]
+};
 
-  let sessionLog = []; // Stores the trial data
-  let waitingForVas = false;
-  let currentVasResolve = null;
-
-
+let sessionLog = []; // Stores the trial data
+let waitingForVas = false;
+let currentVasResolve = null;
 
 (function () {
   const isFileMode = location.protocol === 'file:';
@@ -63,16 +61,19 @@
 
   let video = null;
   let panel = null;
-  let startTime = 0;
-  let endTime = 0;
+  let startTime = null;
+  let endTime = null;
   let steps = DEFAULT_STEPS;
   let running = false;
+  let stopRequested = false;
   let runToken = 0; // incremented on every new run/stop; invalidates any in-flight run
   let currentStepIndex = -1;
   let targetRate = 1.0;
   let panelMode = 'mini'; // Tracks window width state
 
   function attachRateEnforcer(v) {
+    if (!v || v._rateEnforcerAttached) return;
+    v._rateEnforcerAttached = true;
     v.addEventListener('ratechange', () => {
       if (running && Math.abs(v.playbackRate - targetRate) > 0.001) {
         v.playbackRate = targetRate;
@@ -96,8 +97,6 @@
 
   function getVideoElement() {
     if (isFileMode) {
-      // Browsers render a plain <audio> (or occasionally <video>) element
-      // for a raw local media file.
       return document.querySelector('audio') || document.querySelector('video');
     }
     return document.querySelector('video.html5-main-video') || document.querySelector('video');
@@ -113,9 +112,7 @@
           return;
         }
         attempts++;
-        if (attempts > 30) {
-          // Give up after ~12s rather than polling forever on a page that
-          // will never have a media element.
+        if (attempts > 50) { // Polling up to 20s
           resolve(null);
           return;
         }
@@ -178,8 +175,8 @@
     chrome.storage.local.get(['marks'], (res) => {
       const marks = res.marks || {};
       if (marks[id]) {
-        startTime = marks[id].startTime;
-        endTime = marks[id].endTime;
+        startTime = typeof marks[id].startTime === 'number' ? marks[id].startTime : null;
+        endTime = typeof marks[id].endTime === 'number' ? marks[id].endTime : null;
       } else {
         startTime = null;
         endTime = null;
@@ -222,16 +219,12 @@
     }
   }
 
-  // Accepts an index to jump straight to a specific row. Starting a new run
-  // always supersedes any run already in progress -- no need to stop first.
-  // Replaces the old runSequence loop
-  // Accepts an index to jump straight to a specific row.
   async function runSequence(fromIndex) {
     if (!video || startTime === null || endTime === null || endTime <= startTime) {
       updateStatus('Mark a valid start and end point first.');
       return;
     }
-    
+
     // 1. Unblock any active VAS prompt if running
     if (waitingForVas && currentVasResolve) {
       currentVasResolve(null);
@@ -260,15 +253,14 @@
       await playStep(steps[i], currentToken);
       if (stopRequested || currentToken !== runToken) break;
 
-      // ★ リアルタイム評価: 毎ステップごとにチェックボックスの最新状態を確認
-      const isVasEnabled = panel.querySelector('#nlp-enable-vas')?.checked || false;
+      // Real-time evaluation of checkbox state
+      const isVasEnabled = panel ? panel.querySelector('#nlp-enable-vas')?.checked : false;
 
       // Optional VAS Rating Prompt
       if (isVasEnabled) {
         const vasScore = await promptVAS();
         if (stopRequested || currentToken !== runToken) break;
 
-        // Log rating (Nullでない場合のみ記録)
         if (vasScore !== null) {
           sessionLog.push({
             SubjectID: "SUBJ_001",
@@ -284,33 +276,37 @@
         }
       }
     }
-    
-    // Only clear running state if this token is still the active one
+
+    // Wrap up sequence state
     if (currentToken === runToken) {
       running = false;
       currentStepIndex = -1;
       updateStatus(stopRequested ? 'Stopped' : 'Sequence Complete.');
       renderStepsList();
+
+      // Automatically render and display chart if VAS was collected
+      if (sessionLog.length > 0) {
+        renderPerformanceChart();
+      }
     }
   }
 
-  // Opens the VAS UI and returns a Promise that resolves on Submit
   function promptVAS() {
     return new Promise((resolve) => {
       waitingForVas = true;
-      const vasContainer = panel.querySelector('#nlp-vas-container');
-      const slider = panel.querySelector('#nlp-vas-slider');
-      
+      const vasContainer = panel ? panel.querySelector('#nlp-vas-container') : null;
+      const slider = panel ? panel.querySelector('#nlp-vas-slider') : null;
+
       if (vasContainer) {
         vasContainer.classList.add('nlp-active');
       }
       if (slider) {
         slider.value = 50;
       }
-      
+
       currentVasResolve = (score) => {
         if (vasContainer) {
-          vasContainer.classList.remove('nlp-active'); // 必ず非表示にする
+          vasContainer.classList.remove('nlp-active');
         }
         waitingForVas = false;
         resolve(score);
@@ -322,7 +318,7 @@
     stopRequested = true;
     runToken++; // Invalidates in-flight step
     running = false;
-    
+
     if (waitingForVas && currentVasResolve) {
       currentVasResolve(null);
     }
@@ -333,9 +329,104 @@
     renderStepsList();
   }
 
+  // ---------- In-House Dual-Axis Plotter ----------
+
+  function renderPerformanceChart() {
+    const chartWrap = panel.querySelector('#nlp-chart-container');
+    if (!chartWrap) return;
+
+    // Filter points that actually have VAS scores recorded
+    const validData = sessionLog.filter(d => d.VAS_Clarity !== null && d.VAS_Clarity !== undefined);
+    if (validData.length === 0) {
+      chartWrap.innerHTML = '<div style="padding:10px;text-align:center;color:#888;font-size:11px;">No VAS data collected yet.</div>';
+      return;
+    }
+
+    const width = 280;
+    const height = 150;
+    const pad = { top: 20, right: 35, bottom: 25, left: 35 };
+    const innerW = width - pad.left - pad.right;
+    const innerH = height - pad.top - pad.bottom;
+
+    const n = validData.length;
+    const minRate = 0.5;
+    const maxRate = 2.0;
+
+    // Coordinate mapping helpers
+    const getX = (i) => pad.left + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+    const getY1 = (vas) => pad.top + innerH - (vas / 100) * innerH; // VAS: 0 - 100
+    const getY2 = (rate) => {
+      const clamped = Math.max(minRate, Math.min(maxRate, rate));
+      return pad.top + innerH - ((clamped - minRate) / (maxRate - minRate)) * innerH;
+    };
+
+    // Construct SVG Paths
+    let vasPath = '';
+    let ratePath = '';
+    let vasPoints = '';
+    let ratePoints = '';
+
+    validData.forEach((d, i) => {
+      const x = getX(i);
+      const y1 = getY1(d.VAS_Clarity);
+      const y2 = getY2(d.PlaybackRate);
+
+      vasPath += (i === 0 ? `M ${x} ${y1}` : ` L ${x} ${y1}`);
+      ratePath += (i === 0 ? `M ${x} ${y2}` : ` L ${x} ${y2}`);
+
+      vasPoints += `<circle cx="${x}" cy="${y1}" r="3" fill="#ff00cc" stroke="#fff" stroke-width="1"><title>Step ${d.StepIdx}: VAS ${d.VAS_Clarity}%</title></circle>`;
+      ratePoints += `<rect x="${x - 2.5}" y="${y2 - 2.5}" width="5" height="5" fill="#00d2ff"><title>Step ${d.StepIdx}: ${d.PlaybackRate}x</title></rect>`;
+    });
+
+    const svg = `
+      <svg width="${width}" height="${height}" style="background:#181818;border-radius:6px;font-family:sans-serif;font-size:9px;user-select:none;">
+        <!-- Grid lines -->
+        <line x1="${pad.left}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top}" stroke="#333" stroke-dasharray="2,2"/>
+        <line x1="${pad.left}" y1="${pad.top + innerH / 2}" x2="${width - pad.right}" y2="${pad.top + innerH / 2}" stroke="#333" stroke-dasharray="2,2"/>
+        <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="#444"/>
+
+        <!-- Y1 (VAS) Axis Labels (Left - Magenta) -->
+        <text x="${pad.left - 4}" y="${pad.top + 4}" fill="#ff00cc" text-anchor="end">100%</text>
+        <text x="${pad.left - 4}" y="${pad.top + innerH / 2 + 3}" fill="#ff00cc" text-anchor="end">50%</text>
+        <text x="${pad.left - 4}" y="${pad.top + innerH}" fill="#ff00cc" text-anchor="end">0%</text>
+
+        <!-- Y2 (Speed) Axis Labels (Right - Cyan) -->
+        <text x="${width - pad.right + 4}" y="${pad.top + 4}" fill="#00d2ff" text-anchor="start">2.0x</text>
+        <text x="${width - pad.right + 4}" y="${pad.top + innerH / 2 + 3}" fill="#00d2ff" text-anchor="start">1.25x</text>
+        <text x="${width - pad.right + 4}" y="${pad.top + innerH}" fill="#00d2ff" text-anchor="start">0.5x</text>
+
+        <!-- Traces -->
+        <path d="${ratePath}" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8"/>
+        <path d="${vasPath}" fill="none" stroke="#ff00cc" stroke-width="2"/>
+
+        <!-- Data Nodes -->
+        ${ratePoints}
+        ${vasPoints}
+
+        <!-- X-axis tick labels (Step numbers) -->
+        ${validData.map((d, i) => `<text x="${getX(i)}" y="${height - 8}" fill="#aaa" text-anchor="middle">${d.StepIdx}</text>`).join('')}
+
+        <!-- Legend -->
+        <circle cx="${pad.left + 5}" cy="10" r="3" fill="#ff00cc"/>
+        <text x="${pad.left + 12}" y="13" fill="#ff00cc">VAS Clarity</text>
+        <rect x="${width - pad.right - 55}" y="7" width="6" height="6" fill="#00d2ff"/>
+        <text x="${width - pad.right - 45}" y="13" fill="#00d2ff">Speed</text>
+      </svg>
+    `;
+
+    chartWrap.innerHTML = svg;
+    chartWrap.style.display = 'block';
+  }
+
   // ---------- UI ----------
 
   function buildPanel() {
+    if (document.getElementById('ninja-listening-panel')) {
+      panel = document.getElementById('ninja-listening-panel');
+      return;
+    }
+    if (!document.body) return;
+
     panel = document.createElement('div');
     panel.id = 'ninja-listening-panel';
     panel.classList.add('nlp-collapsed');    
@@ -349,64 +440,80 @@
       '  </span>' +
       '</div>' +
       '<div class="nlp-body">' +
-      
-      '  <div class="nlp-controls-row">' +
-      '    <select id="nlp-preset-select" class="nlp-preset-select">' +
+
+      // Row 1: Full-width Preset Select
+      '  <div class="nlp-row" style="margin-bottom: 4px;">' +
+      '    <select id="nlp-preset-select" class="nlp-preset-select" style="width: 100%;">' +
       '      <option value="ninja">Ninja Protocol (0.6x Anchor)</option>' +
       '      <option value="compression">Pure Compression</option>' +
       '      <option value="static">Static Control (1.0x)</option>' +
       '    </select>' +
-      '    <button id="nlp-load-btn" class="nlp-file-btn">Load</button>' +
-      '    <button id="nlp-export-btn" class="nlp-file-btn">Export Data</button>' +
       '  </div>' +
 
-      // --- NEW: Optional VAS Checkbox Row ---
-      '  <div class="nlp-row" style="font-size: 11px; opacity: 0.9;">' +
+      // Row 2: Action Buttons (Load / Export / Chart)
+      '  <div class="nlp-controls-row" style="display: flex; gap: 4px; margin-bottom: 6px;">' +
+      '    <button id="nlp-load-btn" class="nlp-file-btn" style="flex: 1;">Load</button>' +
+      '    <button id="nlp-export-btn" class="nlp-file-btn" style="flex: 1.3;">Export Data</button>' +
+      '    <button id="nlp-chart-btn" class="nlp-file-btn" style="flex: 1;">\uD83D\uDCCA Chart</button>' +
+      '  </div>' +
+
+      // Optional VAS Checkbox Row
+      '  <div class="nlp-row" style="font-size: 11px; opacity: 0.9; margin-bottom: 4px;">' +
       '    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">' +
       '      <input type="checkbox" id="nlp-enable-vas"> Collect VAS Ratings' +
       '    </label>' +
       '  </div>' +
 
-      '  <div class="nlp-row">' +
-      '    <button id="nlp-mark-start">Mark start</button>' +
-      '    <span id="nlp-start-label">--:--</span>' +
+      // Start Time Row with Integrated Next Button
+      '  <div class="nlp-row" style="display: flex; align-items: center; gap: 6px;">' +
+      '    <button id="nlp-mark-start" style="flex: 0 0 auto;">Mark start</button>' +
+      '    <span id="nlp-start-label" style="min-width: 42px;">--:--</span>' +
+      '    <button id="nlp-start-at-end" class="nlp-file-btn" title="Set Start to previous End and seek forward" style="margin-left: auto; padding: 2px 8px; font-weight: bold; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; color: #eee; cursor: pointer;">Next \u2794</button>' +
       '  </div>' +
+
+      // End Time Row
       '  <div class="nlp-row">' +
       '    <button id="nlp-mark-end">Mark end</button>' +
       '    <span id="nlp-end-label">--:--</span>' +
       '  </div>' +
+
+      // Run / Stop Row
       '  <div class="nlp-row">' +
       '    <button id="nlp-run">\u25B6 Run sequence</button>' +
       '    <button id="nlp-stop">\u25A0 Stop</button>' +
       '  </div>' +
+
       '  <div class="nlp-status" id="nlp-status">Ready</div>' +
       '  <div class="nlp-detail-only" id="nlp-steps-wrap">' +
       '    <div class="nlp-steps-label">Steps (click to jump in)</div>' +
       '    <div id="nlp-steps-list"></div>' +
       '  </div>' +
-      
-      // VAS Container
+
+      // Performance Chart Container
+      '  <div id="nlp-chart-container" style="display:none;margin-top:8px;text-align:center;"></div>' +
+
+      // VAS Prompt Container
       '  <div id="nlp-vas-container">' +
       '    <div class="nlp-vas-question">At this speed, how clearly could you perceive the acoustic details (individual sounds, phonemes, and syllables) of the speech?</div>' +
       '    <div class="nlp-vas-labels"><span>0%: Blur/Noise</span><span>100%: Crystal Clear</span></div>' +
-      '    <input type="range" id="nlp-vas-slider" min="0" max="100" step="5" value="50">' +
+      '    <input type="range" id="nlp-vas-slider" min="0" max="100" step="1" value="50">' +
       '    <div class="nlp-vas-actions">' +
       '      <button id="nlp-vas-replay" class="nlp-file-btn">\uD83D\uDD04 Replay</button>' +
       '      <button id="nlp-vas-submit" class="nlp-row button">Submit \u2794</button>' +
       '    </div>' +
       '  </div>' +
       '</div>';
-      
+
     document.body.appendChild(panel);
 
     // Hidden file input for loading configs
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = '.json';
-      fileInput.style.display = 'none';
-      document.body.appendChild(fileInput);
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
 
-    // Open options page safely via background script (Works on Chrome & Firefox)
+    // Open options page safely via background script
     panel.querySelector('#nlp-settings').addEventListener('click', () => {
       chrome.runtime.sendMessage({ action: 'openOptionsPage' });
     });
@@ -415,7 +522,7 @@
     panel.querySelector('#nlp-toggle').addEventListener('click', () => {
       panel.classList.toggle('nlp-collapsed');
     });
-    
+
     panel.querySelector('#nlp-view-toggle').addEventListener('click', () => {
       panelMode = panelMode === 'mini' ? 'detailed' : 'mini';
       chrome.storage.local.set({ panelMode: panelMode });
@@ -429,29 +536,58 @@
       updatePanelTimes();
       saveMarksForVideo();
     });
+
+    panel.querySelector('#nlp-start-at-end').addEventListener('click', () => {
+      if (endTime === null || isNaN(endTime)) return;
+      stopSequence();
+      startTime = endTime;
+      endTime = null;
+      if (video) {
+        video.currentTime = startTime;
+      }
+      updatePanelTimes();
+      saveMarksForVideo();
+      updateStatus('Moved to previous End. Mark new End point.');
+    });
+
     panel.querySelector('#nlp-mark-end').addEventListener('click', () => {
       if (!video) return;
       endTime = video.currentTime;
       updatePanelTimes();
       saveMarksForVideo();
     });
+
     panel.querySelector('#nlp-run').addEventListener('click', () => runSequence());
     panel.querySelector('#nlp-stop').addEventListener('click', () => stopSequence());
 
-    // Restore last used view state
-    chrome.storage.local.get(['panelMode'], (res) => {
-      panelMode = res.panelMode === 'detailed' ? 'detailed' : 'mini';
-      applyPanelMode();
+    panel.querySelector('#nlp-enable-vas').addEventListener('change', (e) => {
+      if (!e.target.checked && waitingForVas && currentVasResolve) {
+        currentVasResolve(null);
+      }
+    });
+
+    // Toggle Chart Visibility
+    panel.querySelector('#nlp-chart-btn').addEventListener('click', () => {
+      const container = panel.querySelector('#nlp-chart-container');
+      if (container.style.display === 'none' || container.innerHTML === '') {
+        renderPerformanceChart();
+        container.style.display = 'block';
+      } else {
+        container.style.display = 'none';
+      }
     });
 
     // Preset Selection
     panel.querySelector('#nlp-preset-select').addEventListener('change', (e) => {
       steps = PRESETS[e.target.value];
+      renderStepsList();
     });
 
     // VAS Replay Button
     panel.querySelector('#nlp-vas-replay').addEventListener('click', () => {
-      playStep(steps[currentStepIndex]); // Replays without advancing the loop
+      if (steps[currentStepIndex]) {
+        playStep(steps[currentStepIndex], runToken);
+      }
     });
 
     // VAS Submit Button
@@ -465,15 +601,15 @@
     // Export Data (CSV)
     panel.querySelector('#nlp-export-btn').addEventListener('click', () => {
       if (sessionLog.length === 0) {
-        alert("No data to export yet.");
+        alert('No data to export yet.');
         return;
       }
-      
-      const headers = "SubjectID,Timestamp,VideoID,StartTime,EndTime,StepIdx,PlaybackRate,Subtitles,VAS_Clarity\n";
+
+      const headers = 'SubjectID,Timestamp,VideoID,StartTime,EndTime,StepIdx,PlaybackRate,Subtitles,VAS_Clarity\n';
       const csv = sessionLog.map(row => 
         `${row.SubjectID},${row.Timestamp},${row.VideoID},${row.StartTime},${row.EndTime},${row.StepIdx},${row.PlaybackRate},${row.Subtitles},${row.VAS_Clarity}`
-      ).join("\n");
-      
+      ).join('\n');
+
       const blob = new Blob([headers + csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -496,23 +632,22 @@
         try {
           const config = JSON.parse(ev.target.result);
           if (config.stepsArray) steps = config.stepsArray;
-          if (config.startTime) startTime = config.startTime;
-          if (config.endTime) endTime = config.endTime;
+          if (config.startTime !== undefined) startTime = config.startTime;
+          if (config.endTime !== undefined) endTime = config.endTime;
           updatePanelTimes();
-          alert("Config loaded successfully.");
+          renderStepsList();
+          alert('Config loaded successfully.');
         } catch (err) {
-          alert("Invalid JSON config.");
+          alert('Invalid JSON config.');
         }
       };
       reader.readAsText(file);
     });
 
-    // buildPanel() 内のイベントリスナー追加エリアへ挿入
-    panel.querySelector('#nlp-enable-vas').addEventListener('change', (e) => {
-      // 走行中にOFFに切り替えられたら、現在開いているVASプロンプトをスキップして次へ進める
-      if (!e.target.checked && waitingForVas && currentVasResolve) {
-        currentVasResolve(null);
-      }
+    // Restore last used view state
+    chrome.storage.local.get(['panelMode'], (res) => {
+      panelMode = res.panelMode === 'detailed' ? 'detailed' : 'mini';
+      applyPanelMode();
     });
   }
 
@@ -526,28 +661,23 @@
     if (!panel || panelMode !== 'detailed') return;
     const list = panel.querySelector('#nlp-steps-list');
     if (!list) return;
-    
-    list.innerHTML = ''; // Clear existing
-    
+
+    list.innerHTML = '';
+
     steps.forEach((step, i) => {
       const row = document.createElement('div');
-      // Highlight the active step if running
       row.className = 'nlp-step-row' + (i === currentStepIndex ? ' nlp-step-active' : '');
-      
+
       const rateLabel = (Math.round(step.rate * 100) / 100).toString() + 'x';
       row.innerHTML =
         '<span class="nlp-step-idx">' + (i + 1) + '</span>' +
         '<span class="nlp-step-rate">' + rateLabel + '</span>' +
         (isFileMode ? '' : '<span class="nlp-step-cc">' + (step.subtitles ? 'CC on' : 'CC off') + '</span>');
-      
-      // Make row clickable to jump straight to this iteration.
-      // runSequence() bumps the run token itself, which immediately
-      // invalidates whatever was running before -- no need to stop first
-      // or guess at a delay.
+
       row.addEventListener('click', () => {
         runSequence(i);
       });
-      
+
       list.appendChild(row);
     });
   }
@@ -574,34 +704,61 @@
     }
   }
 
-  // ---------- YouTube SPA navigation ----------
-  document.addEventListener('yt-navigate-finish', async () => {
-    stopSequence();
-    video = getVideoElement() || (await waitForVideo());
-    if (!video) return;
-    attachRateEnforcer(video);
-    loadMarksForVideo();
-  });
+  // ---------- Navigation and Persistent Lifecycle Handler ----------
 
-  
-  // ---------- init ----------
-  
-  (async () => {
-    // Always build the UI panel first so it's ready
+  async function handlePageActivation() {
+    // Only mount if on a video watch page or a local audio/video file
+    const isWatchPage = location.pathname.startsWith('/watch') || isFileMode;
+    if (!isWatchPage) {
+      if (panel) panel.style.display = 'none';
+      return;
+    }
+
     buildPanel();
+    if (panel) panel.style.display = '';
 
-    // Now wait for the media element
-    video = await waitForVideo();
-    
+    video = getVideoElement() || (await waitForVideo());
     if (video) {
       attachRateEnforcer(video);
       loadMarksForVideo();
+      updateStatus('Ready');
     } else {
-      updateStatus("No video/audio element detected on this page.");
+      updateStatus('No video/audio element detected.');
     }
-
     loadSteps(() => {
       renderStepsList();
     });
-})();
+  }
+
+  // Ensure initialization across all navigation types
+  document.addEventListener('yt-navigate-finish', () => {
+    stopSequence();
+    handlePageActivation();
+  });
+
+  window.addEventListener('spfdone', () => {
+    stopSequence();
+    handlePageActivation();
+  });
+
+  window.addEventListener('popstate', handlePageActivation);
+
+  // Periodic safeguard check to re-inject if YouTube wipes the panel during initial load
+  let initPollCount = 0;
+  const initInterval = setInterval(() => {
+    initPollCount++;
+    if (!document.getElementById('ninja-listening-panel') && document.body) {
+      handlePageActivation();
+    }
+    if (initPollCount > 15) {
+      clearInterval(initInterval);
+    }
+  }, 500);
+
+  // Init trigger
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', handlePageActivation);
+  } else {
+    handlePageActivation();
+  }
 })();
