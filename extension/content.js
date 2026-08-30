@@ -273,6 +273,12 @@ let currentVasResolve = null;
             Subtitles: steps[i].subtitles,
             VAS_Clarity: vasScore
           });
+
+          // Live-update chart if it is currently displayed on screen
+          const chartContainer = panel ? panel.querySelector('#nlp-chart-container') : null;
+          if (chartContainer && chartContainer.style.display !== 'none') {
+            renderPerformanceChart();
+          }
         }
       }
     }
@@ -457,10 +463,10 @@ let currentVasResolve = null;
       '    <button id="nlp-chart-btn" class="nlp-file-btn" style="flex: 1;">\uD83D\uDCCA Chart</button>' +
       '  </div>' +
 
-      // Optional VAS Checkbox Row
+      // Optional Performance Checkbox Row
       '  <div class="nlp-row" style="font-size: 11px; opacity: 0.9; margin-bottom: 4px;">' +
       '    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">' +
-      '      <input type="checkbox" id="nlp-enable-vas"> Collect VAS Ratings' +
+      '      <input type="checkbox" id="nlp-enable-vas"> Record your performance' +
       '    </label>' +
       '  </div>' +
 
@@ -707,7 +713,6 @@ let currentVasResolve = null;
   // ---------- Navigation and Persistent Lifecycle Handler ----------
 
   async function handlePageActivation() {
-    // Only mount if on a video watch page or a local audio/video file
     const isWatchPage = location.pathname.startsWith('/watch') || isFileMode;
     if (!isWatchPage) {
       if (panel) panel.style.display = 'none';
@@ -730,7 +735,7 @@ let currentVasResolve = null;
     });
   }
 
-  // Ensure initialization across all navigation types
+  // Navigation hooks
   document.addEventListener('yt-navigate-finish', () => {
     stopSequence();
     handlePageActivation();
@@ -743,7 +748,7 @@ let currentVasResolve = null;
 
   window.addEventListener('popstate', handlePageActivation);
 
-  // Periodic safeguard check to re-inject if YouTube wipes the panel during initial load
+  // Periodic safeguard check
   let initPollCount = 0;
   const initInterval = setInterval(() => {
     initPollCount++;

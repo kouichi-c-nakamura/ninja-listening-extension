@@ -76,7 +76,7 @@ YouTube動画やローカル音声ファイルの任意の区間をマークし�
 * **Chrome / Edge / Brave 等 (Chromium系):**
 👉 **[Chrome ウェブストアから追加](https://chromewebstore.google.com/detail/ninja-listening-trainer-f/mdcdlhjhdpebakceoeolpnlfkhkbicjj)**
 * **Firefox:**
-👉 **[Firefox Add-ons (AMO) から追加](https://www.google.com/url?sa=E&source=gmail&q=https://addons.mozilla.org/ja/firefox/addon/ninja-listening-trainer/)**
+👉 **[Firefox Add-ons (AMO) から追加](https://addons.mozilla.org/ja/firefox/addon/ninja-listening-trainer/)**
 
 > **⚠️ Firefoxをご利用の方へ（初回のみ）:**
 > インストール直後、`about:addons` を開き、「Ninja Listening Trainer」の **「権限」** タブから **「https://www.youtube.com の保存されたデータへのアクセス」** をオンにしてください（これがオフだとYouTube上にパネルが表示されません）。
@@ -126,3 +126,6 @@ python3 make_zip.py
 zip -r -X ../ninja-listening-extension.zip . -x ".*"
 
 ```
+
+https://chrome.google.com/webstore/devconsole/
+https://addons.mozilla.org/ja/developers/addons
