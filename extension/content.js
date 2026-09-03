@@ -1,5 +1,5 @@
 // Ninja Listening Trainer - content script
-// Runs on youtube.com/watch pages AND on local audio files opened directly
+// Runs on youtube.com/watch and /shorts/ pages AND on local audio files opened directly
 // via a file:// URL (matched by extension in manifest.json). Injects a
 // small overlay panel that lets you mark a fragment (start/end) and replay
 // it through a configurable sequence of playback speeds and subtitle
@@ -70,6 +70,7 @@ let currentVasResolve = null;
   let currentStepIndex = -1;
   let targetRate = 1.0;
   let panelMode = 'mini';
+  let lastShortsId = null;
 
   function attachRateEnforcer(v) {
     if (!v || v._rateEnforcerAttached) return;
@@ -83,11 +84,22 @@ let currentVasResolve = null;
 
   // ---------- helpers ----------
 
+  function isShortsPage() {
+    return location.pathname.startsWith('/shorts');
+  }
+
   function getVideoId() {
     if (isFileMode) {
       return location.href;
     }
     try {
+      if (isShortsPage()) {
+        const parts = location.pathname.split('/');
+        const shortsIdx = parts.indexOf('shorts');
+        if (shortsIdx !== -1 && parts[shortsIdx + 1]) {
+          return parts[shortsIdx + 1].split('?')[0];
+        }
+      }
       const url = new URL(location.href);
       return url.searchParams.get('v') || 'unknown';
     } catch (e) {
@@ -98,6 +110,11 @@ let currentVasResolve = null;
   function getVideoElement() {
     if (isFileMode) {
       return document.querySelector('audio') || document.querySelector('video');
+    }
+    if (isShortsPage()) {
+      // Shorts loads multiple video elements in a carousel; select the currently active reel
+      const activeReelVideo = document.querySelector('ytd-reel-video-renderer[is-active] video');
+      if (activeReelVideo) return activeReelVideo;
     }
     return document.querySelector('video.html5-main-video') || document.querySelector('video');
   }
@@ -123,6 +140,12 @@ let currentVasResolve = null;
   }
 
   function getCaptionsButton() {
+    if (isShortsPage()) {
+      const activeReel = document.querySelector('ytd-reel-video-renderer[is-active]');
+      if (activeReel) {
+        return activeReel.querySelector('.ytp-subtitles-button');
+      }
+    }
     return document.querySelector('.ytp-subtitles-button');
   }
 
@@ -503,6 +526,7 @@ let currentVasResolve = null;
     });
 
     panel.querySelector('#nlp-mark-start').addEventListener('click', () => {
+      video = getVideoElement();
       if (!video) return;
       startTime = video.currentTime;
       updatePanelTimes();
@@ -514,6 +538,7 @@ let currentVasResolve = null;
       stopSequence();
       startTime = endTime;
       endTime = null;
+      video = getVideoElement();
       if (video) {
         video.currentTime = startTime;
       }
@@ -523,6 +548,7 @@ let currentVasResolve = null;
     });
 
     panel.querySelector('#nlp-mark-end').addEventListener('click', () => {
+      video = getVideoElement();
       if (!video) return;
       endTime = video.currentTime;
       updatePanelTimes();
@@ -702,8 +728,9 @@ let currentVasResolve = null;
   // ---------- Navigation and Persistent Lifecycle Handler ----------
 
   async function handlePageActivation() {
-    const isWatchPage = location.pathname.startsWith('/watch') || isFileMode;
-    if (!isWatchPage) {
+    const isWatch = location.pathname.startsWith('/watch');
+    const isShorts = isShortsPage();
+    if (!isWatch && !isShorts && !isFileMode) {
       if (panel) panel.style.display = 'none';
       return;
     }
@@ -722,9 +749,13 @@ let currentVasResolve = null;
     loadSteps(() => {
       renderStepsList();
     });
+
+    if (isShorts) {
+      lastShortsId = getVideoId();
+    }
   }
 
-  // Navigation hooks
+  // Navigation and Shorts Carousel Scroll Watcher
   document.addEventListener('yt-navigate-finish', () => {
     stopSequence();
     handlePageActivation();
@@ -736,6 +767,22 @@ let currentVasResolve = null;
   });
 
   window.addEventListener('popstate', handlePageActivation);
+
+  // Shorts carousel monitor: detects when the user scrolls to the next Short
+  setInterval(() => {
+    if (isShortsPage()) {
+      const currentId = getVideoId();
+      if (currentId !== 'unknown' && currentId !== lastShortsId) {
+        lastShortsId = currentId;
+        stopSequence();
+        video = getVideoElement();
+        if (video) {
+          attachRateEnforcer(video);
+        }
+        loadMarksForVideo();
+      }
+    }
+  }, 400);
 
   // Periodic safeguard check
   let initPollCount = 0;
