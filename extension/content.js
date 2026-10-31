@@ -507,8 +507,7 @@ let currentVasResolve = null;
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.json';
-    fileInput.style.display = 'none';
+    fileInput.accept = '.json,.csv,text/csv';  // ← これでCSVが選択可能になります    fileInput.style.display = 'none';
     document.body.appendChild(fileInput);
 
     panel.querySelector('#nlp-settings').addEventListener('click', () => {
@@ -639,17 +638,111 @@ let currentVasResolve = null;
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
+        const text = ev.target.result.trim();
+        fileInput.value = ''; // 同じファイルを連続で選択しても発火するように初期化
+
+        // 1. JSON 形式（既存のプリセット読み込み）
+        if (file.name.endsWith('.json') || text.startsWith('{')) {
+          try {
+            const config = JSON.parse(text);
+            if (config.stepsArray) steps = config.stepsArray;
+            if (config.startTime !== undefined) startTime = config.startTime;
+            if (config.endTime !== undefined) endTime = config.endTime;
+            updatePanelTimes();
+            renderStepsList();
+            alert('Config loaded successfully.');
+          } catch (err) {
+            alert('Invalid JSON config.');
+          }
+          return;
+        }
+
+        // 2. CSV 形式（定点観測ログ or 速度プロトコル定義）
         try {
-          const config = JSON.parse(ev.target.result);
-          if (config.stepsArray) steps = config.stepsArray;
-          if (config.startTime !== undefined) startTime = config.startTime;
-          if (config.endTime !== undefined) endTime = config.endTime;
-          updatePanelTimes();
-          renderStepsList();
-          alert('Config loaded successfully.');
+          const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+          if (lines.length < 2) {
+            alert('CSV contains no data rows.');
+            return;
+          }
+
+          const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+
+          // 判定A: Export Data から書き出された定点観測ログ (StartTime, EndTime, VideoID等)
+          if (headers.includes('starttime') && headers.includes('endtime')) {
+            const startCol = headers.indexOf('starttime');
+            const endCol = headers.indexOf('endtime');
+            const videoCol = headers.indexOf('videoid');
+
+            // 直近の記録行（最終行）からトリム範囲を抽出
+            const lastDataRow = lines[lines.length - 1].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+            const newStart = parseFloat(lastDataRow[startCol]);
+            const newEnd = parseFloat(lastDataRow[endCol]);
+            const targetVideoId = videoCol !== -1 ? lastDataRow[videoCol] : null;
+
+            if (isNaN(newStart) || isNaN(newEnd)) {
+              alert('Could not parse StartTime/EndTime from CSV.');
+              return;
+            }
+
+            const currentId = getVideoId();
+
+            // ログが別動画のものだった場合は移動するか確認
+            if (!isFileMode && targetVideoId && targetVideoId !== 'unknown' && targetVideoId !== currentId) {
+              const proceed = confirm(`This log is from video "${targetVideoId}".\nNavigate to that video?`);
+              if (proceed) {
+                chrome.storage.local.get(['marks'], (res) => {
+                  const marks = res.marks || {};
+                  marks[targetVideoId] = { startTime: newStart, endTime: newEnd };
+                  chrome.storage.local.set({ marks: marks }, () => {
+                    location.href = `https://www.youtube.com/watch?v=${targetVideoId}`;
+                  });
+                });
+                return;
+              }
+            }
+
+            // 現在の動画に区間をセット
+            stopSequence();
+            startTime = newStart;
+            endTime = newEnd;
+            video = getVideoElement();
+            if (video) {
+              video.currentTime = startTime;
+            }
+            updatePanelTimes();
+            saveMarksForVideo();
+            updateStatus(`Restored session: ${formatTime(startTime)} - ${formatTime(endTime)}`);
+            alert(`Session restored: ${formatTime(startTime)} - ${formatTime(endTime)}`);
+            return;
+          }
+
+          // 判定B: 速度プロトコル定義 CSV (Rate, Subtitles 等)
+          const rateCol = headers.findIndex(h => h.includes('rate') || h.includes('speed') || h.includes('tempo'));
+          const subCol = headers.findIndex(h => h.includes('sub') || h.includes('caption'));
+
+          if (rateCol !== -1) {
+            const newSteps = [];
+            for (let i = 1; i < lines.length; i++) {
+              const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+              const rateVal = parseFloat(cols[rateCol]);
+              if (!isNaN(rateVal)) {
+                const subVal = subCol !== -1 ? (cols[subCol].toLowerCase() === 'true' || cols[subCol] === '1') : false;
+                newSteps.push({ rate: rateVal, subtitles: subVal });
+              }
+            }
+            if (newSteps.length > 0) {
+              steps = newSteps;
+              renderStepsList();
+              updateStatus(`Loaded ${steps.length} steps protocol.`);
+              alert(`Loaded ${steps.length} steps protocol.`);
+              return;
+            }
+          }
+
+          alert('Unrecognized CSV format.');
         } catch (err) {
-          alert('Invalid JSON config.');
+          alert('Failed to parse CSV: ' + err.message);
         }
       };
       reader.readAsText(file);
