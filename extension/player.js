@@ -50,7 +50,7 @@ let currentFileKey = null;
 let currentRawFileName = '';
 let steps = DEFAULT_STEPS;
 let startTime = 0;
-let endTime = 0;
+let endTime = 30;
 let running = false;
 let stopRequested = false;
 let runToken = 0;
@@ -62,6 +62,7 @@ let currentVasResolve = null;
 
 const fileInput = document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
+const browseBtn = document.getElementById('browse-btn');
 const fileInfo = document.getElementById('file-info');
 const fileNameEl = document.getElementById('file-name');
 const controls = document.getElementById('controls');
@@ -70,6 +71,8 @@ const startLabel = document.getElementById('start-label');
 const endLabel = document.getElementById('end-label');
 const stepsListEl = document.getElementById('steps-list');
 const configFile = document.getElementById('config-file-input');
+const vasSlider = document.getElementById('vas-slider');
+const vasCurrentVal = document.getElementById('vas-current-val');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -126,7 +129,6 @@ function loadMarksForFile(callback) {
 
     if (record) {
       startTime = typeof record.startTime === 'number' ? record.startTime : 0;
-      // ★ 保存値が 0 や無効値、または startTime 以下の場合は +30秒 を初期値にする
       if (typeof record.endTime === 'number' && record.endTime > startTime) {
         endTime = record.endTime;
       } else {
@@ -168,7 +170,6 @@ function loadFile(file) {
     });
   };
 
-  // メタデータがすでに取得できているか、イベント発火を待つ
   if (audio.readyState >= 1) {
     onReady();
   } else {
@@ -178,6 +179,17 @@ function loadFile(file) {
 
 fileInput.addEventListener('change', (e) => {
   if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+});
+
+if (browseBtn) {
+  browseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+}
+
+dropZone.addEventListener('click', () => {
+  fileInput.click();
 });
 
 ['dragenter', 'dragover'].forEach((evt) => {
@@ -211,7 +223,6 @@ document.getElementById('start-at-end').addEventListener('click', () => {
   stopSequence();
   startTime = endTime;
   
-  // ★ 次の区間も自動的に +30秒 (全体の長さを超えない範囲)
   let nextEnd = startTime + 30;
   if (audio && audio.duration && !isNaN(audio.duration) && nextEnd > audio.duration) {
     nextEnd = audio.duration;
@@ -223,7 +234,7 @@ document.getElementById('start-at-end').addEventListener('click', () => {
   }
   updateTimeLabels();
   saveMarksForFile();
-  updateStatus('Moved to next 30s fragment.');
+  updateStatus('Moved to next fragment.');
 });
 
 document.getElementById('mark-end').addEventListener('click', () => {
@@ -335,6 +346,7 @@ function promptVAS() {
 
     vasContainer.classList.remove('hidden');
     slider.value = 50;
+    if (vasCurrentVal) vasCurrentVal.textContent = '50%';
 
     currentVasResolve = (score) => {
       vasContainer.classList.add('hidden');
@@ -371,6 +383,12 @@ document.getElementById('enable-vas').addEventListener('change', (e) => {
   }
 });
 
+if (vasSlider && vasCurrentVal) {
+  vasSlider.addEventListener('input', (e) => {
+    vasCurrentVal.textContent = e.target.value + '%';
+  });
+}
+
 document.getElementById('vas-replay').addEventListener('click', () => {
   if (steps[currentStepIndex]) {
     playStep(steps[currentStepIndex], runToken);
@@ -401,9 +419,9 @@ function renderPerformanceChart() {
     return;
   }
 
-  const width = 460;
-  const height = 180;
-  const pad = { top: 25, right: 45, bottom: 30, left: 45 };
+  const width = 380;
+  const height = 160;
+  const pad = { top: 20, right: 40, bottom: 25, left: 40 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
@@ -431,32 +449,32 @@ function renderPerformanceChart() {
     vasPath += (i === 0 ? 'M ' + x + ' ' + y1 : ' L ' + x + ' ' + y1);
     ratePath += (i === 0 ? 'M ' + x + ' ' + y2 : ' L ' + x + ' ' + y2);
 
-    vasPoints += '<circle cx="' + x + '" cy="' + y1 + '" r="4" fill="#ff00cc" stroke="#fff" stroke-width="1"><title>Step ' + d.StepIdx + ': Performance ' + d.VAS_Clarity + '%</title></circle>';
-    ratePoints += '<rect x="' + (x - 3) + '" y="' + (y2 - 3) + '" width="6" height="6" fill="#00d2ff"><title>Step ' + d.StepIdx + ': ' + d.PlaybackRate + 'x</title></rect>';
+    vasPoints += '<circle cx="' + x + '" cy="' + y1 + '" r="3" fill="#ff00cc" stroke="#fff" stroke-width="1"><title>Step ' + d.StepIdx + ': Performance ' + d.VAS_Clarity + '%</title></circle>';
+    ratePoints += '<rect x="' + (x - 2.5) + '" y="' + (y2 - 2.5) + '" width="5" height="5" fill="#00d2ff"><title>Step ' + d.StepIdx + ': ' + d.PlaybackRate + 'x</title></rect>';
   });
 
-  const xLabels = validData.map((d, i) => '<text x="' + getX(i) + '" y="' + (height - 10) + '" fill="#aaa" text-anchor="middle">' + d.StepIdx + '</text>').join('');
+  const xLabels = validData.map((d, i) => '<text x="' + getX(i) + '" y="' + (height - 8) + '" fill="#aaa" text-anchor="middle">' + d.StepIdx + '</text>').join('');
 
   const svg =
-    '<svg width="' + width + '" height="' + height + '" style="background:#181818;border-radius:6px;font-family:sans-serif;font-size:10px;user-select:none;">' +
-    '  <line x1="' + pad.left + '" y1="' + pad.top + '" x2="' + (width - pad.right) + '" y2="' + pad.top + '" stroke="#333" stroke-dasharray="2,2"/>' +
-    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH / 2) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH / 2) + '" stroke="#333" stroke-dasharray="2,2"/>' +
-    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH) + '" stroke="#444"/>' +
-    '  <text x="' + (pad.left - 6) + '" y="' + (pad.top + 4) + '" fill="#ff00cc" text-anchor="end">100%</text>' +
-    '  <text x="' + (pad.left - 6) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#ff00cc" text-anchor="end">50%</text>' +
-    '  <text x="' + (pad.left - 6) + '" y="' + (pad.top + innerH) + '" fill="#ff00cc" text-anchor="end">0%</text>' +
-    '  <text x="' + (width - pad.right + 6) + '" y="' + (pad.top + 4) + '" fill="#00d2ff" text-anchor="start">2.0x</text>' +
-    '  <text x="' + (width - pad.right + 6) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#00d2ff" text-anchor="start">1.25x</text>' +
-    '  <text x="' + (width - pad.right + 6) + '" y="' + (pad.top + innerH) + '" fill="#00d2ff" text-anchor="start">0.5x</text>' +
+    '<svg width="' + width + '" height="' + height + '" style="background:#0f1115;border-radius:6px;font-family:sans-serif;font-size:9px;user-select:none;">' +
+    '  <line x1="' + pad.left + '" y1="' + pad.top + '" x2="' + (width - pad.right) + '" y2="' + pad.top + '" stroke="#252a35" stroke-dasharray="2,2"/>' +
+    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH / 2) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH / 2) + '" stroke="#252a35" stroke-dasharray="2,2"/>' +
+    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH) + '" stroke="#333842"/>' +
+    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + 3) + '" fill="#ff00cc" text-anchor="end">100%</text>' +
+    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#ff00cc" text-anchor="end">50%</text>' +
+    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + innerH) + '" fill="#ff00cc" text-anchor="end">0%</text>' +
+    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + 3) + '" fill="#00d2ff" text-anchor="start">2.0x</text>' +
+    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#00d2ff" text-anchor="start">1.25x</text>' +
+    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + innerH) + '" fill="#00d2ff" text-anchor="start">0.5x</text>' +
     '  <path d="' + ratePath + '" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8"/>' +
     '  <path d="' + vasPath + '" fill="none" stroke="#ff00cc" stroke-width="2"/>' +
     ratePoints +
     vasPoints +
     xLabels +
-    '  <circle cx="' + (pad.left + 5) + '" cy="12" r="4" fill="#ff00cc"/>' +
-    '  <text x="' + (pad.left + 14) + '" y="15" fill="#ff00cc">Clarity</text>' +
-    '  <rect x="' + (width - pad.right - 65) + '" y="8" width="8" height="8" fill="#00d2ff"/>' +
-    '  <text x="' + (width - pad.right - 52) + '" y="15" fill="#00d2ff">Speed</text>' +
+    '  <circle cx="' + (pad.left + 5) + '" cy="10" r="3" fill="#ff00cc"/>' +
+    '  <text x="' + (pad.left + 12) + '" y="13" fill="#ff00cc">Clarity</text>' +
+    '  <rect x="' + (width - pad.right - 55) + '" y="7" width="6" height="6" fill="#00d2ff"/>' +
+    '  <text x="' + (width - pad.right - 45) + '" y="13" fill="#00d2ff">Speed</text>' +
     '</svg>';
 
   chartWrap.innerHTML = svg;

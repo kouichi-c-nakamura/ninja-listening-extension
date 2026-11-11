@@ -1,59 +1,456 @@
-/* プリセット・ボタン追加スタイル */
-.preset-select {
-  background: #222;
+/* ==========================================================================
+   Ninja Listening Trainer - Local Player Modern Dark Style
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 30px 16px 60px;
+  min-height: 100vh;
+  background-color: #0d0f12;
+  color: #e6e8eb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+}
+
+.player-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* 共通非表示 */
+.hidden {
+  display: none !important;
+}
+
+/* ヘッダー */
+.app-header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
   color: #fff;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 6px;
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.file-btn {
-  background: #333;
-  color: #eee;
-  border: 1px solid #555;
-  padding: 6px 10px;
-  border-radius: 4px;
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  background: rgba(0, 210, 255, 0.12);
+  color: #00d2ff;
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   1. モダンなファイルドロップゾーン
+   -------------------------------------------------------------------------- */
+.drop-card {
+  width: 80vw;
+  max-width: 860px;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
   cursor: pointer;
-  font-size: 12px;
-}
-.file-btn:hover {
-  background: #444;
 }
 
-/* VAS Overlay */
-#vas-container {
+.drop-card:hover, .drop-card.dragover {
+  border-color: #00d2ff;
+  background: rgba(0, 210, 255, 0.04);
+}
+
+.drop-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.drop-text {
+  font-size: 14px;
+  color: #eee;
+  margin-bottom: 4px;
+}
+
+.drop-sub {
+  font-size: 11px;
+  color: #777;
+  margin-bottom: 14px;
+}
+
+.btn-browse {
+  background: #1f242d;
+  color: #00d2ff;
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  padding: 7px 18px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-browse:hover {
+  background: #00d2ff;
+  color: #000;
+}
+
+/* --------------------------------------------------------------------------
+   2. 画面幅80%のワイドプレイヤー
+   -------------------------------------------------------------------------- */
+.audio-section {
+  width: 80vw;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  margin-top: 14px;
-  background: rgba(30, 30, 30, 0.95);
-  border: 1px solid #3ea6ff;
+}
+
+.audio-title {
+  font-size: 13px;
+  color: #00d2ff;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.wide-audio {
+  width: 100%;
+  height: 44px;
+  border-radius: 8px;
+  outline: none;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
+}
+
+/* --------------------------------------------------------------------------
+   3. メイン操作パネル（幅420pxの角丸コンテナ）
+   -------------------------------------------------------------------------- */
+.control-card {
+  width: 100%;
+  max-width: 420px;
+  background: #16181d;
+  border: 1px solid #262930;
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.section-micro-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.modern-select {
+  width: 100%;
+  background: #0f1115;
+  color: #eee;
+  border: 1px solid #31353f;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.modern-select:focus {
+  border-color: #00d2ff;
+}
+
+.btn-grid-3 {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-secondary {
+  flex: 1;
+  background: #20242c;
+  color: #ddd;
+  border: 1px solid #333842;
+  border-radius: 6px;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: #2a303b;
+  border-color: #4b5260;
+  color: #fff;
+}
+
+.vas-toggle-row {
+  font-size: 12px;
+  color: #ccc;
+  padding: 4px 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* マーカーボタングループ */
+.marker-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #0f1115;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #232730;
+}
+
+.marker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-mark {
+  background: #222731;
+  color: #eee;
+  border: 1px solid #373e4d;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-mark:hover {
+  background: #2c3342;
+  border-color: #00d2ff;
+}
+
+.time-display {
+  font-family: monospace;
+  font-size: 12px;
+  color: #00d2ff;
+  min-width: 32px;
+}
+
+.btn-next {
+  margin-left: auto;
+  background: #262c38;
+  color: #fff;
+  border: 1px solid #434c5f;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-next:hover {
+  background: #323b4b;
+}
+
+/* 再生・停止アクション */
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary {
+  flex: 2;
+  background: #00d2ff;
+  color: #050a10;
+  border: none;
+  padding: 10px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: #33dcff;
+}
+
+.btn-danger {
+  flex: 1;
+  background: #dc3545;
+  color: #fff;
+  border: none;
+  padding: 10px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-danger:hover {
+  background: #e44d5c;
+}
+
+.status-banner {
+  font-size: 11px;
+  font-family: monospace;
+  color: #9aa2b0;
+  text-align: center;
+  background: #0f1115;
+  padding: 6px;
+  border-radius: 5px;
+  border: 1px solid #1f232b;
+}
+
+/* ステップ一覧 */
+.steps-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.steps-scroll {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #0f1115;
+  border: 1px solid #232730;
   border-radius: 6px;
 }
 
-.vas-question {
+.steps-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.steps-scroll::-webkit-scrollbar-thumb {
+  background: #2c3340;
+  border-radius: 3px;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
   font-size: 12px;
-  font-weight: bold;
+  border-bottom: 1px solid #1a1e26;
+  transition: background 0.1s;
+}
+
+.step-row:last-child {
+  border-bottom: none;
+}
+
+.step-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.step-row.active {
+  background: rgba(0, 210, 255, 0.18);
+  border-left: 3px solid #00d2ff;
+}
+
+.step-idx {
+  width: 20px;
+  color: #666;
+  font-family: monospace;
+}
+
+.step-rate {
+  font-weight: 700;
+  color: #eee;
+}
+
+.chart-wrapper {
+  margin-top: 6px;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   4. 画面幅80%のワイドな VAS 評価カード
+   -------------------------------------------------------------------------- */
+.vas-wide-card {
+  width: 80vw;
+  max-width: 960px;
+  background: #16181d;
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vas-question {
+  font-size: 13px;
+  font-weight: 600;
   color: #fff;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .vas-labels {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 11px;
-  color: #aaa;
+  color: #8c93a0;
+  margin-top: 4px;
 }
 
-#vas-slider {
+.wide-slider {
   width: 100%;
+  height: 6px;
+  border-radius: 4px;
+  background: #252a35;
+  outline: none;
+  cursor: pointer;
+  accent-color: #00d2ff;
+  margin: 6px 0;
+}
+
+.vas-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.btn-primary-small {
+  background: #00d2ff;
+  color: #050a10;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.vas-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
+.btn-primary-small:hover {
+  background: #33dcff;
 }
