@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ninja Listening Trainer for YouTube",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "icons": {
     "16": "pink shuriken 128.png",
     "48": "pink shuriken 128.png",
@@ -26,7 +26,7 @@
         "file:///*.aac",
         "file:///*.weba"
       ],
-      "js": ["content.js"],
+      "js": ["chart.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

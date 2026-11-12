@@ -411,74 +411,12 @@ document.getElementById('preset-select').addEventListener('change', (e) => {
 
 function renderPerformanceChart() {
   const chartWrap = document.getElementById('chart-container');
-  if (!chartWrap) return;
-
-  const validData = sessionLog.filter((d) => d.VAS_Clarity !== null && d.VAS_Clarity !== undefined);
-  if (validData.length === 0) {
-    chartWrap.innerHTML = '<div style="padding:10px;text-align:center;color:#888;font-size:11px;">No data recorded yet.</div>';
-    return;
-  }
-
-  const width = 380;
-  const height = 160;
-  const pad = { top: 20, right: 40, bottom: 25, left: 40 };
-  const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
-
-  const n = validData.length;
-  const minRate = 0.5;
-  const maxRate = 2.0;
-
-  const getX = (i) => pad.left + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
-  const getY1 = (vas) => pad.top + innerH - (vas / 100) * innerH;
-  const getY2 = (rate) => {
-    const clamped = Math.max(minRate, Math.min(maxRate, rate));
-    return pad.top + innerH - ((clamped - minRate) / (maxRate - minRate)) * innerH;
-  };
-
-  let vasPath = '';
-  let ratePath = '';
-  let vasPoints = '';
-  let ratePoints = '';
-
-  validData.forEach((d, i) => {
-    const x = getX(i);
-    const y1 = getY1(d.VAS_Clarity);
-    const y2 = getY2(d.PlaybackRate);
-
-    vasPath += (i === 0 ? 'M ' + x + ' ' + y1 : ' L ' + x + ' ' + y1);
-    ratePath += (i === 0 ? 'M ' + x + ' ' + y2 : ' L ' + x + ' ' + y2);
-
-    vasPoints += '<circle cx="' + x + '" cy="' + y1 + '" r="3" fill="#ff00cc" stroke="#fff" stroke-width="1"><title>Step ' + d.StepIdx + ': Performance ' + d.VAS_Clarity + '%</title></circle>';
-    ratePoints += '<rect x="' + (x - 2.5) + '" y="' + (y2 - 2.5) + '" width="5" height="5" fill="#00d2ff"><title>Step ' + d.StepIdx + ': ' + d.PlaybackRate + 'x</title></rect>';
+  window.renderNinjaChart(chartWrap, sessionLog, {
+    width: 380,
+    height: 175,
+    bgColor: '#0f1115',
+    showSubtitlesLegend: false
   });
-
-  const xLabels = validData.map((d, i) => '<text x="' + getX(i) + '" y="' + (height - 8) + '" fill="#aaa" text-anchor="middle">' + d.StepIdx + '</text>').join('');
-
-  const svg =
-    '<svg width="' + width + '" height="' + height + '" style="background:#0f1115;border-radius:6px;font-family:sans-serif;font-size:9px;user-select:none;">' +
-    '  <line x1="' + pad.left + '" y1="' + pad.top + '" x2="' + (width - pad.right) + '" y2="' + pad.top + '" stroke="#252a35" stroke-dasharray="2,2"/>' +
-    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH / 2) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH / 2) + '" stroke="#252a35" stroke-dasharray="2,2"/>' +
-    '  <line x1="' + pad.left + '" y1="' + (pad.top + innerH) + '" x2="' + (width - pad.right) + '" y2="' + (pad.top + innerH) + '" stroke="#333842"/>' +
-    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + 3) + '" fill="#ff00cc" text-anchor="end">100%</text>' +
-    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#ff00cc" text-anchor="end">50%</text>' +
-    '  <text x="' + (pad.left - 4) + '" y="' + (pad.top + innerH) + '" fill="#ff00cc" text-anchor="end">0%</text>' +
-    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + 3) + '" fill="#00d2ff" text-anchor="start">2.0x</text>' +
-    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + innerH / 2 + 3) + '" fill="#00d2ff" text-anchor="start">1.25x</text>' +
-    '  <text x="' + (width - pad.right + 4) + '" y="' + (pad.top + innerH) + '" fill="#00d2ff" text-anchor="start">0.5x</text>' +
-    '  <path d="' + ratePath + '" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8"/>' +
-    '  <path d="' + vasPath + '" fill="none" stroke="#ff00cc" stroke-width="2"/>' +
-    ratePoints +
-    vasPoints +
-    xLabels +
-    '  <circle cx="' + (pad.left + 5) + '" cy="10" r="3" fill="#ff00cc"/>' +
-    '  <text x="' + (pad.left + 12) + '" y="13" fill="#ff00cc">Clarity</text>' +
-    '  <rect x="' + (width - pad.right - 55) + '" y="7" width="6" height="6" fill="#00d2ff"/>' +
-    '  <text x="' + (width - pad.right - 45) + '" y="13" fill="#00d2ff">Speed</text>' +
-    '</svg>';
-
-  chartWrap.innerHTML = svg;
-  chartWrap.style.display = 'block';
 }
 
 document.getElementById('chart-btn').addEventListener('click', () => {
