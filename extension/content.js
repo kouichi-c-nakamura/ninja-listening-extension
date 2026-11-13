@@ -107,12 +107,38 @@ let currentVasResolve = null;
     }
   }
 
+  function getCurrentMediaMetadata() {
+    if (isFileMode) {
+      const rawName = decodeURIComponent(location.pathname.split('/').pop() || 'local_file');
+      return {
+        url: location.href,
+        title: rawName,
+        videoId: location.href
+      };
+    }
+    const titleEl =
+      document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
+      document.querySelector('#title h1 yt-formatted-string') ||
+      document.querySelector('ytd-reel-video-renderer[is-active] h2.title');
+    const title = (titleEl ? titleEl.textContent : document.title.replace(/ - YouTube$/, '')).trim();
+
+    const vid = getVideoId();
+    const cleanUrl = isShortsPage()
+      ? `https://www.youtube.com/shorts/${vid}`
+      : (vid !== 'unknown' ? `https://www.youtube.com/watch?v=${vid}` : location.href);
+
+    return {
+      url: cleanUrl,
+      title: title,
+      videoId: vid
+    };
+  }
+
   function getVideoElement() {
     if (isFileMode) {
       return document.querySelector('audio') || document.querySelector('video');
     }
     if (isShortsPage()) {
-      // Shorts loads multiple video elements in a carousel; select the currently active reel
       const activeReelVideo = document.querySelector('ytd-reel-video-renderer[is-active] video');
       if (activeReelVideo) return activeReelVideo;
     }
@@ -259,10 +285,6 @@ let currentVasResolve = null;
 
     const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
 
-    if (startIdx === 0) {
-      sessionLog = [];
-    }
-
     for (let i = startIdx; i < steps.length; i++) {
       if (stopRequested || currentToken !== runToken) break;
       currentStepIndex = i;
@@ -279,16 +301,22 @@ let currentVasResolve = null;
         if (stopRequested || currentToken !== runToken) break;
 
         if (vasScore !== null) {
+          const meta = getCurrentMediaMetadata();
+          const currentProtocol = panel?.querySelector('#nlp-preset-select')?.value || 'custom';
+
           sessionLog.push({
             SubjectID: 'SUBJ_001',
             Timestamp: new Date().toISOString(),
-            VideoID: getVideoId(),
+            VideoID: meta.videoId,
             StartTime: startTime.toFixed(2),
             EndTime: endTime.toFixed(2),
             StepIdx: i + 1,
             PlaybackRate: steps[i].rate,
             Subtitles: steps[i].subtitles,
-            VAS_Clarity: vasScore
+            VAS_Clarity: vasScore,
+            URL: meta.url,
+            Title: meta.title,
+            Protocol: currentProtocol
           });
 
           const chartContainer = panel ? panel.querySelector('#nlp-chart-container') : null;
@@ -354,8 +382,6 @@ let currentVasResolve = null;
     updateStatus('Stopped');
     renderStepsList();
   }
-
-  // ---------- In-House Dual-Axis Plotter ----------
 
   // ---------- In-House Dual-Axis Plotter ----------
 
@@ -447,7 +473,8 @@ let currentVasResolve = null;
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.json,.csv,text/csv';  // ← これでCSVが選択可能になります    fileInput.style.display = 'none';
+    fileInput.accept = '.json,.csv,text/csv';
+    fileInput.style.display = 'none';
     document.body.appendChild(fileInput);
 
     panel.querySelector('#nlp-settings').addEventListener('click', () => {
@@ -532,42 +559,7 @@ let currentVasResolve = null;
     });
 
     panel.querySelector('#nlp-export-btn').addEventListener('click', () => {
-      if (sessionLog.length === 0) {
-        alert('No data to export yet.');
-        return;
-      }
-
-      const headers = 'SubjectID,Timestamp,VideoID,StartTime,EndTime,StepIdx,PlaybackRate,Subtitles,VAS_Clarity\n';
-      const csv = sessionLog
-        .map(
-          (row) =>
-            row.SubjectID +
-            ',' +
-            row.Timestamp +
-            ',' +
-            row.VideoID +
-            ',' +
-            row.StartTime +
-            ',' +
-            row.EndTime +
-            ',' +
-            row.StepIdx +
-            ',' +
-            row.PlaybackRate +
-            ',' +
-            row.Subtitles +
-            ',' +
-            row.VAS_Clarity
-        )
-        .join('\n');
-
-      const blob = new Blob([headers + csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ninja_research_log_' + Date.now() + '.csv';
-      a.click();
-      URL.revokeObjectURL(url);
+      window.NinjaIO.exportSessionCsv(sessionLog, 'youtube');
     });
 
     panel.querySelector('#nlp-load-btn').addEventListener('click', () => {
@@ -578,111 +570,58 @@ let currentVasResolve = null;
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const text = ev.target.result.trim();
-        fileInput.value = ''; // 同じファイルを連続で選択しても発火するように初期化
+      reader.onload = (ev) => {
+        fileInput.value = '';
+        try {
+          const parsed = window.NinjaIO.parseLoadedFile(file.name, ev.target.result);
 
-        // 1. JSON 形式（既存のプリセット読み込み）
-        if (file.name.endsWith('.json') || text.startsWith('{')) {
-          try {
-            const config = JSON.parse(text);
-            if (config.stepsArray) steps = config.stepsArray;
-            if (config.startTime !== undefined) startTime = config.startTime;
-            if (config.endTime !== undefined) endTime = config.endTime;
+          if (parsed.type === 'json') {
+            if (parsed.steps) steps = parsed.steps;
+            if (parsed.startTime !== undefined) startTime = parsed.startTime;
+            if (parsed.endTime !== undefined) endTime = parsed.endTime;
             updatePanelTimes();
             renderStepsList();
             alert('Config loaded successfully.');
-          } catch (err) {
-            alert('Invalid JSON config.');
-          }
-          return;
-        }
-
-        // 2. CSV 形式（定点観測ログ or 速度プロトコル定義）
-        try {
-          const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-          if (lines.length < 2) {
-            alert('CSV contains no data rows.');
-            return;
-          }
-
-          const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
-
-          // 判定A: Export Data から書き出された定点観測ログ (StartTime, EndTime, VideoID等)
-          if (headers.includes('starttime') && headers.includes('endtime')) {
-            const startCol = headers.indexOf('starttime');
-            const endCol = headers.indexOf('endtime');
-            const videoCol = headers.indexOf('videoid');
-
-            // 直近の記録行（最終行）からトリム範囲を抽出
-            const lastDataRow = lines[lines.length - 1].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-            const newStart = parseFloat(lastDataRow[startCol]);
-            const newEnd = parseFloat(lastDataRow[endCol]);
-            const targetVideoId = videoCol !== -1 ? lastDataRow[videoCol] : null;
-
-            if (isNaN(newStart) || isNaN(newEnd)) {
-              alert('Could not parse StartTime/EndTime from CSV.');
-              return;
+          } else if (parsed.type === 'protocol') {
+            steps = parsed.steps;
+            renderStepsList();
+            updateStatus(`Loaded ${steps.length} steps protocol.`);
+            alert(`Loaded ${steps.length} steps protocol.`);
+          } else if (parsed.type === 'session') {
+            if (parsed.protocol && PRESETS[parsed.protocol]) {
+              steps = PRESETS[parsed.protocol];
+              const presetSelect = panel.querySelector('#nlp-preset-select');
+              if (presetSelect) presetSelect.value = parsed.protocol;
+              renderStepsList();
             }
 
             const currentId = getVideoId();
-
-            // ログが別動画のものだった場合は移動するか確認
-            if (!isFileMode && targetVideoId && targetVideoId !== 'unknown' && targetVideoId !== currentId) {
-              const proceed = confirm(`This log is from video "${targetVideoId}".\nNavigate to that video?`);
-              if (proceed) {
+            if (!isFileMode && parsed.videoId && parsed.videoId !== 'unknown' && parsed.videoId !== currentId) {
+              const titleNote = parsed.title ? `\nTitle: "${parsed.title}"` : '';
+              if (confirm(`This log is from video "${parsed.videoId}".${titleNote}\nNavigate to that video?`)) {
                 chrome.storage.local.get(['marks'], (res) => {
                   const marks = res.marks || {};
-                  marks[targetVideoId] = { startTime: newStart, endTime: newEnd };
-                  chrome.storage.local.set({ marks: marks }, () => {
-                    location.href = `https://www.youtube.com/watch?v=${targetVideoId}`;
+                  marks[parsed.videoId] = { startTime: parsed.startTime, endTime: parsed.endTime };
+                  chrome.storage.local.set({ marks }, () => {
+                    location.href = parsed.url || `https://www.youtube.com/watch?v=${parsed.videoId}`;
                   });
                 });
                 return;
               }
             }
 
-            // 現在の動画に区間をセット
             stopSequence();
-            startTime = newStart;
-            endTime = newEnd;
+            startTime = parsed.startTime;
+            endTime = parsed.endTime;
             video = getVideoElement();
-            if (video) {
-              video.currentTime = startTime;
-            }
+            if (video) video.currentTime = startTime;
             updatePanelTimes();
             saveMarksForVideo();
             updateStatus(`Restored session: ${formatTime(startTime)} - ${formatTime(endTime)}`);
             alert(`Session restored: ${formatTime(startTime)} - ${formatTime(endTime)}`);
-            return;
           }
-
-          // 判定B: 速度プロトコル定義 CSV (Rate, Subtitles 等)
-          const rateCol = headers.findIndex(h => h.includes('rate') || h.includes('speed') || h.includes('tempo'));
-          const subCol = headers.findIndex(h => h.includes('sub') || h.includes('caption'));
-
-          if (rateCol !== -1) {
-            const newSteps = [];
-            for (let i = 1; i < lines.length; i++) {
-              const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-              const rateVal = parseFloat(cols[rateCol]);
-              if (!isNaN(rateVal)) {
-                const subVal = subCol !== -1 ? (cols[subCol].toLowerCase() === 'true' || cols[subCol] === '1') : false;
-                newSteps.push({ rate: rateVal, subtitles: subVal });
-              }
-            }
-            if (newSteps.length > 0) {
-              steps = newSteps;
-              renderStepsList();
-              updateStatus(`Loaded ${steps.length} steps protocol.`);
-              alert(`Loaded ${steps.length} steps protocol.`);
-              return;
-            }
-          }
-
-          alert('Unrecognized CSV format.');
         } catch (err) {
-          alert('Failed to parse CSV: ' + err.message);
+          alert(err.message);
         }
       };
       reader.readAsText(file);
@@ -791,6 +730,18 @@ let currentVasResolve = null;
   // Navigation and Shorts Carousel Scroll Watcher
   document.addEventListener('yt-navigate-finish', () => {
     stopSequence();
+    const nextId = getVideoId();
+    if (sessionLog.length > 0 && sessionLog[sessionLog.length - 1].VideoID !== nextId && nextId !== 'unknown') {
+      const keep = confirm(
+        `前の動画の記録（${sessionLog.length}件）が残っています。\n` +
+        `「OK」で新しい動画の記録も続けて蓄積、「キャンセル」で前の記録をクリアします。`
+      );
+      if (!keep) {
+        sessionLog = [];
+        const chartContainer = panel ? panel.querySelector('#nlp-chart-container') : null;
+        if (chartContainer) chartContainer.style.display = 'none';
+      }
+    }
     handlePageActivation();
   });
 

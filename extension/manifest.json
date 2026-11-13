@@ -26,7 +26,7 @@
         "file:///*.aac",
         "file:///*.weba"
       ],
-      "js": ["chart.js", "content.js"],
+      "js": ["chart.js", "session_io.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

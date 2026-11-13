@@ -146,12 +146,19 @@ function loadMarksForFile(callback) {
 
 function loadFile(file) {
   if (!file) return;
+  const newFileKey = fileKeyFor(file);
+  if (currentFileKey && currentFileKey !== newFileKey) {
+    sessionLog = [];
+    const chartContainer = document.getElementById('chart-container');
+    if (chartContainer) chartContainer.style.display = 'none';
+  }
+
   currentRawFileName = file.name;
   const url = URL.createObjectURL(file);
   fileNameEl.textContent = file.name;
   audio = document.getElementById('audio');
   audio.src = url;
-  currentFileKey = fileKeyFor(file);
+  currentFileKey = newFileKey;
 
   fileInfo.classList.remove('hidden');
   controls.classList.remove('hidden');
@@ -286,9 +293,6 @@ async function runSequence(fromIndex) {
   running = true;
 
   const startIdx = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : 0;
-  if (startIdx === 0) {
-    sessionLog = [];
-  }
 
   for (let i = startIdx; i < steps.length; i++) {
     if (stopRequested || currentToken !== runToken) break;
@@ -305,6 +309,8 @@ async function runSequence(fromIndex) {
       if (stopRequested || currentToken !== runToken) break;
 
       if (vasScore !== null) {
+        const currentProtocol = document.getElementById('preset-select')?.value || 'custom';
+
         sessionLog.push({
           SubjectID: 'SUBJ_001',
           Timestamp: new Date().toISOString(),
@@ -314,7 +320,10 @@ async function runSequence(fromIndex) {
           StepIdx: i + 1,
           PlaybackRate: steps[i].rate,
           Subtitles: false,
-          VAS_Clarity: vasScore
+          VAS_Clarity: vasScore,
+          URL: currentRawFileName || 'local_file',
+          Title: currentRawFileName || 'Local Audio',
+          Protocol: currentProtocol
         });
 
         const chartContainer = document.getElementById('chart-container');
@@ -432,42 +441,7 @@ document.getElementById('chart-btn').addEventListener('click', () => {
 // ---------- Export Data ----------
 
 document.getElementById('export-btn').addEventListener('click', () => {
-  if (sessionLog.length === 0) {
-    alert('No data to export yet.');
-    return;
-  }
-
-  const headers = 'SubjectID,Timestamp,VideoID,StartTime,EndTime,StepIdx,PlaybackRate,Subtitles,VAS_Clarity\n';
-  const csv = sessionLog
-    .map(
-      (row) =>
-        row.SubjectID +
-        ',' +
-        row.Timestamp +
-        ',' +
-        row.VideoID +
-        ',' +
-        row.StartTime +
-        ',' +
-        row.EndTime +
-        ',' +
-        row.StepIdx +
-        ',' +
-        row.PlaybackRate +
-        ',' +
-        row.Subtitles +
-        ',' +
-        row.VAS_Clarity
-    )
-    .join('\n');
-
-  const blob = new Blob([headers + csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'ninja_local_research_log_' + Date.now() + '.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  window.NinjaIO.exportSessionCsv(sessionLog, 'local_audio');
 });
 
 // ---------- Load (JSON / CSV 兼用) ----------
@@ -480,94 +454,50 @@ configFile.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async (ev) => {
-    const text = ev.target.result.trim();
+  reader.onload = (ev) => {
     configFile.value = '';
+    try {
+      const parsed = window.NinjaIO.parseLoadedFile(file.name, ev.target.result);
 
-    // 1. JSON
-    if (file.name.endsWith('.json') || text.startsWith('{')) {
-      try {
-        const config = JSON.parse(text);
-        if (config.stepsArray) steps = config.stepsArray;
-        if (config.startTime !== undefined) startTime = config.startTime;
-        if (config.endTime !== undefined) endTime = config.endTime;
+      if (parsed.type === 'json') {
+        if (parsed.steps) steps = parsed.steps;
+        if (parsed.startTime !== undefined) startTime = parsed.startTime;
+        if (parsed.endTime !== undefined) endTime = parsed.endTime;
         updateTimeLabels();
         renderStepsList();
         saveMarksForFile();
         alert('Config loaded successfully.');
-      } catch (err) {
-        alert('Invalid JSON config.');
-      }
-      return;
-    }
-
-    // 2. CSV
-    try {
-      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      if (lines.length < 2) {
-        alert('CSV contains no data rows.');
-        return;
-      }
-
-      const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, '').toLowerCase());
-
-      // 判定A: 定点観測セッション復元ログ (StartTime, EndTime, VideoID)
-      if (headers.includes('starttime') && headers.includes('endtime')) {
-        const startCol = headers.indexOf('starttime');
-        const endCol = headers.indexOf('endtime');
-        const videoCol = headers.indexOf('videoid');
-
-        const lastRow = lines[lines.length - 1].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
-        const newStart = parseFloat(lastRow[startCol]);
-        const newEnd = parseFloat(lastRow[endCol]);
-        const targetFile = videoCol !== -1 ? lastRow[videoCol] : null;
-
-        if (isNaN(newStart) || isNaN(newEnd)) {
-          alert('Could not parse StartTime/EndTime from CSV.');
-          return;
+      } else if (parsed.type === 'protocol') {
+        steps = parsed.steps;
+        renderStepsList();
+        updateStatus(`Loaded ${steps.length} steps protocol.`);
+        alert(`Loaded ${steps.length} steps protocol.`);
+      } else if (parsed.type === 'session') {
+        if (parsed.protocol && PRESETS[parsed.protocol]) {
+          steps = PRESETS[parsed.protocol];
+          const presetSelect = document.getElementById('preset-select');
+          if (presetSelect) presetSelect.value = parsed.protocol;
+          renderStepsList();
         }
 
-        if (targetFile && currentRawFileName && targetFile !== currentRawFileName) {
-          const match = confirm(`This log was recorded on file:\n"${targetFile}"\n\nCurrent file is:\n"${currentRawFileName}"\n\nApply marks to current audio anyway?`);
+        if (parsed.videoId && currentRawFileName && parsed.videoId !== currentRawFileName) {
+          const match = confirm(
+            `This log was recorded on file:\n"${parsed.videoId}"\n\nCurrent file is:\n"${currentRawFileName}"\n\nApply marks to current audio anyway?`
+          );
           if (!match) return;
         }
 
         stopSequence();
-        startTime = newStart;
-        endTime = newEnd;
-        if (audio) {
-          audio.currentTime = startTime;
-        }
+        startTime = parsed.startTime;
+        endTime = parsed.endTime;
+        if (audio) audio.currentTime = startTime;
         updateTimeLabels();
         saveMarksForFile();
         updateStatus(`Restored session: ${formatTime(startTime)} - ${formatTime(endTime)}`);
         alert(`Session restored: ${formatTime(startTime)} - ${formatTime(endTime)}`);
-        return;
       }
-
-      // 判定B: 速度プロトコル定義 CSV
-      const rateCol = headers.findIndex((h) => h.includes('rate') || h.includes('speed') || h.includes('tempo'));
-      if (rateCol !== -1) {
-        const newSteps = [];
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
-          const r = parseFloat(cols[rateCol]);
-          if (!isNaN(r)) {
-            newSteps.push({ rate: r, subtitles: false });
-          }
-        }
-        if (newSteps.length > 0) {
-          steps = newSteps;
-          renderStepsList();
-          updateStatus(`Loaded ${steps.length} steps protocol.`);
-          alert(`Loaded ${steps.length} steps protocol.`);
-          return;
-        }
-      }
-
-      alert('Unrecognized CSV format.');
     } catch (err) {
-      alert('Failed to parse CSV: ' + err.message);
+      alert(err.message);
     }
   };
   reader.readAsText(file);
